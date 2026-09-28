@@ -1,0 +1,20 @@
+services:
+  - type: web
+    name: web-rag-qa-api
+    runtime: docker
+    plan: starter
+    dockerfilePath: ./Dockerfile
+    healthCheckPath: /health
+    envVars:
+      - key: GROQ_API_KEY
+        sync: false
+      - key: DATABASE_URL
+        sync: false
+      - key: GROQ_MODEL
+        value: llama-3.3-70b-versatile
+      - key: SYSTEM_PROMPT
+        sync: false
+      - key: INGEST_API_KEY
+        generateValue: true
+      - key: ALLOWED_ORIGINS
+        sync: false          # set to your Vercel UI URL once deployed

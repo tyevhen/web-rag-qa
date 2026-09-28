@@ -1,0 +1,42 @@
+# Allowlist: ignore everything at the root, then re-include what the project needs.
+/*
+
+# Project config
+!/.gitignore
+!/.dockerignore
+!/.env.example
+!/.python-version
+!/pyproject.toml
+!/uv.lock
+!/Dockerfile
+!/docker-compose.yml
+!/render.yaml
+!/settings.py
+!/README.md
+
+# Source
+!/agent/
+!/api/
+!/db/
+!/ingestion/
+!/migrations/
+!/services/
+!/worker/
+!/tests/
+
+# Docs: only README.md at the root is tracked
+*.md
+!/README.md
+
+# Not applied by the migration runner (reads /migrations only)
+/db/migrations/
+
+# Python artifacts
+__pycache__/
+*.py[cod]
+
+# Eval output
+/tests/eval/results.json
+
+# OS
+.DS_Store

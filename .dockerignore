@@ -1,0 +1,7 @@
+.*
+!.env.example
+!.python-version
+__pycache__
+*.pyc
+tests/
+*.md
