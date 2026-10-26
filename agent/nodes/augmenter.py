@@ -11,8 +11,8 @@ log = logging.getLogger(__name__)
 
 _prompt = ChatPromptTemplate.from_messages([
     ("human",
-     "Rewrite these search queries to use broader, more technical vocabulary suitable for "
-     "searching a medical and emergency-preparedness document database. "
+     "These search queries found too little. Rewrite each one in plain, everyday words: "
+     "short, concrete, using common synonyms for the key terms and no jargon. "
      "Return only the rewritten queries, one per line, same count.\n\n"
      "Queries:\n{queries}"),
 ])
@@ -29,7 +29,9 @@ def make_augmenter():
         if len(rewritten) != len(original):
             log.warning("augment: expected %d queries, got %d — falling back to originals", len(original), len(rewritten))
             rewritten = original
+        # Keep the originals: a rewrite widens the search, it should not replace what already matched
+        combined = list(dict.fromkeys([*original, *rewritten]))
         log.info("augment: rewritten sub_questions: %s", rewritten)
-        return {"sub_questions": rewritten}
+        return {"sub_questions": combined}
 
     return augment

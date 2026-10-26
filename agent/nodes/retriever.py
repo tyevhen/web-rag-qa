@@ -18,7 +18,8 @@ def _rrf(scores: dict[str, float], ranked_ids: list[str]) -> None:
 
 def make_retriever(repo: DocumentRepository):
     async def retrieve(state: AgentState) -> dict:
-        queries = state["sub_questions"] or [state["question"]]
+        # Original question always included: sub-questions alone lose the user's own wording
+        queries = list(dict.fromkeys([state["question"], *state["sub_questions"]]))
         chunks: dict[str, Chunk] = {}
         rrf_scores: dict[str, float] = {}
 

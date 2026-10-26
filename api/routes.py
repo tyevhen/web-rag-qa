@@ -80,6 +80,7 @@ async def ask(
             graded_chunk_count=len(result["graded_chunks"]),
             retry_count=result["retry_count"],
             citations=result["citations"],
+            graded_chunk_ids=[c.id for c in result["graded_chunks"]],
         ))
     except Exception:
         logger.exception("Failed to write query_log for run_id=%s", run_id)

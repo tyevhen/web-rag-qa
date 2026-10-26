@@ -118,7 +118,7 @@ Set in `.env` (see `.env.example`):
 |---|---|---|
 | `GROQ_API_KEY` | yes | Groq API key |
 | `DATABASE_URL` | yes | Postgres connection string (append `?sslmode=require` for Neon/Supabase) |
-| `GROQ_MODEL` | yes | Groq model id, e.g. `llama-3.3-70b-versatile` |
+| `GROQ_MODEL` | yes | Groq model id, e.g. `openai/gpt-oss-120b` |
 | `SYSTEM_PROMPT` | yes | Assistant persona and scope |
 | `INGEST_API_KEY` | yes | Key for the ingestion API-key check (`api/deps.py::verify_api_key`) |
 | `REDIS_URL` | no | Default `redis://localhost:6379` |

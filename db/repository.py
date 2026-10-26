@@ -4,6 +4,9 @@ from dataclasses import dataclass
 import asyncpg
 from asyncpg import Pool
 
+from db.dashboard_queries import DashboardQueriesMixin
+from db.eval_queries import EvalQueriesMixin
+
 
 @dataclass
 class QueryLogEntry:
@@ -18,9 +21,10 @@ class QueryLogEntry:
     graded_chunk_count: int
     retry_count: int
     citations: list[str]
+    graded_chunk_ids: list[str]
 
 
-class DocumentRepository:
+class DocumentRepository(EvalQueriesMixin, DashboardQueriesMixin):
     def __init__(self, pool: Pool) -> None:
         self._pool = pool
 
@@ -104,8 +108,8 @@ class DocumentRepository:
             INSERT INTO query_log (
                 run_id, question, answer, domain, latency_ms, route,
                 sub_question_count, retrieved_chunk_count, graded_chunk_count,
-                retry_count, citations
-            ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11)
+                retry_count, citations, graded_chunk_ids
+            ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12)
             """,
             uuid.UUID(entry.run_id),
             entry.question,
@@ -118,4 +122,5 @@ class DocumentRepository:
             entry.graded_chunk_count,
             entry.retry_count,
             entry.citations,
+            [uuid.UUID(i) for i in entry.graded_chunk_ids],
         )

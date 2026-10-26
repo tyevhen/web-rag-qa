@@ -1,10 +1,12 @@
 import logging
 
+from arq import cron
 from arq.connections import RedisSettings
 from crawl4ai import AsyncWebCrawler
 
 from db.client import create_pool
 from db.repository import DocumentRepository
+from evaluation.online import score_recent
 from services.ingestion import ingest_url
 from settings import get_settings
 
@@ -16,6 +18,11 @@ async def ingest_url_task(ctx: dict, url: str, mode: str = "crawl") -> dict:
     summary, pages_scraped = await ingest_url(url, ctx["repo"], ctx["crawler"], mode)
     log.info("Worker: finished ingestion for %s (%d pages)", url, pages_scraped)
     return {"url": url, "pages_scraped": pages_scraped, "summary": summary}
+
+
+async def score_recent_task(ctx: dict) -> dict:
+    scored = await score_recent(ctx["repo"], get_settings().eval_sample_size)
+    return {"scored": scored}
 
 
 async def startup(ctx: dict) -> None:
@@ -33,7 +40,10 @@ async def shutdown(ctx: dict) -> None:
 
 
 class WorkerSettings:
-    functions = [ingest_url_task]
+    functions = [ingest_url_task, score_recent_task]
+    cron_jobs = [cron(score_recent_task, hour=3, minute=0, run_at_startup=False)]
     on_startup = startup
     on_shutdown = shutdown
     redis_settings = RedisSettings.from_dsn(get_settings().redis_url)
+    # arq's default is 300s; crawls run ~1s/page, so a 570-page site was killed mid-crawl
+    job_timeout = 3600

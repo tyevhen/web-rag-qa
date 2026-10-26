@@ -17,7 +17,9 @@ _prompt = ChatPromptTemplate.from_messages([
      "Answer the question based on the information below. "
      "Always respond in English, regardless of the language of the question or context. "
      "Respond directly and confidently — do not say 'according to the context', "
-     "'the context states', or any similar phrase.\n\n"
+     "'the context states', or any similar phrase. "
+     "After each statement, cite the numbered source it comes from, e.g. [1] or [2][3]. "
+     "Only cite numbers that appear below.\n\n"
      "Question: {question}\n\n"
      "Information:\n{context}"),
 ])
