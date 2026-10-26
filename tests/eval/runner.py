@@ -2,10 +2,12 @@ import asyncio
 import logging
 import time
 from dataclasses import dataclass, field
+from typing import Any, cast
 
 from langgraph.graph.state import CompiledStateGraph
 
 from agent.embed import embed_query
+from agent.graph import route_of
 from agent.nodes.grader import grading_queries, score_chunks
 from agent.nodes.retriever import make_retriever
 from agent.state import AgentState, Chunk
@@ -61,14 +63,22 @@ async def _ablation(repo: DocumentRepository, row: GoldenRow) -> dict[str, list[
 
 async def _run_one(graph: CompiledStateGraph, repo: DocumentRepository, row: GoldenRow) -> RunResult:
     t0 = time.monotonic()
-    state = await graph.ainvoke(_initial_state(row))
+    state: dict[str, Any] = {}
+    first_pass: list[Chunk] | None = None
+    # Stream to also capture the first retrieval: after a retry the final one includes the augmenter's rewrites
+    async for item in graph.astream(_initial_state(row), stream_mode=["updates", "values"]):
+        mode, chunk = cast(tuple[str, dict[str, Any]], item)
+        if mode == "values":
+            state = chunk
+        elif "retrieve" in chunk and first_pass is None:
+            first_pass = chunk["retrieve"]["retrieved_chunks"]
     latency = round(time.monotonic() - t0, 2)
     retrieved: list[Chunk] = state["retrieved_chunks"]
     queries = grading_queries(row.question, state["sub_questions"])
     ce_scores = await asyncio.to_thread(score_chunks, queries, retrieved) if retrieved else []
     return RunResult(
         row=row,
-        route="clarify" if state["clarifying_questions"] else "reason",
+        route=route_of(state),
         answer=state["answer"],
         sub_questions=state["sub_questions"],
         retrieved=retrieved,
@@ -76,7 +86,8 @@ async def _run_one(graph: CompiledStateGraph, repo: DocumentRepository, row: Gol
         retrieved_ce_scores=[float(s) for s in ce_scores],
         retry_count=state["retry_count"],
         latency_s=latency,
-        ablation=await _ablation(repo, row),
+        # Same single pass as the other variants, so the decomposition comparison excludes the retry
+        ablation={**await _ablation(repo, row), "hybrid_decomposed_first_pass": [content_hash(c.content) for c in first_pass or []]},
     )
 
 

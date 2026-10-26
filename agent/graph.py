@@ -1,4 +1,6 @@
 import logging
+from collections.abc import Mapping
+from typing import Any
 
 from langgraph.graph import END, StateGraph
 from langgraph.graph.state import CompiledStateGraph
@@ -37,6 +39,11 @@ def _after_grade(state: AgentState) -> str:
         return "reason"
     log.info("route: → retry (%d graded chunks below threshold=2, retry_count=%d)", graded, retries)
     return "retry"
+
+
+def route_of(state: Mapping[str, Any]) -> str:
+    """Which terminal node answered. Mirrors _after_grade: clarify runs only when nothing passed grading."""
+    return "reason" if state["graded_chunks"] else "clarify"
 
 
 def build_graph(config: TopicConfig, repo: DocumentRepository) -> CompiledStateGraph:

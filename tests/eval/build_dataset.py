@@ -5,8 +5,8 @@
 Kept deliberately cheap for the Groq free tier (~8k tokens/min): one NER call per chunk,
 fixed personas, and one call per question. Single-hop questions only; add multi-hop ones by hand.
 
-Review golden.jsonl by hand afterwards: fix wrong references, delete nonsense rows.
-Hand-written unanswerable / multi_turn rows already in the file are preserved.
+Review the appended rows in golden.jsonl by hand: fix wrong references, delete nonsense rows.
+Existing rows are never changed or removed, so re-running only adds questions.
 """
 import argparse
 import asyncio
@@ -96,9 +96,12 @@ async def main(size: int, sample: int) -> None:
     if not chunks:
         raise SystemExit("No chunks in the database — ingest a site first (POST /ingest/url)")
     generated = await asyncio.to_thread(_generate, chunks, size)
-    kept = [r for r in load_golden() if r.category != "answerable"] if GOLDEN_PATH.exists() else []
-    save_golden(generated + kept)
-    log.info("wrote %d generated + %d hand-written rows to %s", len(generated), len(kept), GOLDEN_PATH)
+    # Append only: existing rows may have been fixed by hand, regenerating them would lose that review
+    kept = load_golden() if GOLDEN_PATH.exists() else []
+    seen = {r.question for r in kept}
+    added = [r for r in generated if r.question not in seen]
+    save_golden(kept + added)
+    log.info("kept %d rows, appended %d new generated rows to %s", len(kept), len(added), GOLDEN_PATH)
 
 
 if __name__ == "__main__":

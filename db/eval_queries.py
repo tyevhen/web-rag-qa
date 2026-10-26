@@ -38,7 +38,7 @@ class EvalQueriesMixin:
         )
 
     async def save_eval_scores(
-        self, run_id: str, scores: dict[str, float | None], judge_model: str
+        self, run_id: str, scores: dict[str, float], judge_model: str
     ) -> None:
         await self._pool.executemany(
             "INSERT INTO query_eval (run_id, metric, score, judge_model) VALUES ($1, $2, $3, $4)",

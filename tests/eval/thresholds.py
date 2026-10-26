@@ -17,11 +17,19 @@ def lookup(report: dict[str, Any], dotted: str) -> Any:
 
 
 def check_thresholds(report: dict[str, Any]) -> list[str]:
-    """Returns human-readable violations. Metrics absent from this run (e.g. --skip-llm) are not checked."""
+    """Returns human-readable violations. Sections absent from this run (e.g. `llm` with --skip-llm) are not checked."""
     violations: list[str] = []
     for path, bounds in json.loads(THRESHOLDS_PATH.read_text()).items():
-        value = lookup(report, path)
-        if value is None:
+        if path.split(".")[0] not in report:
+            continue
+        parent, _, key = path.rpartition(".")
+        node = lookup(report, parent)
+        if not isinstance(node, dict) or key not in node:
+            # Renamed or removed metric: the gate would otherwise pass silently forever
+            violations.append(f"{path} = missing")
+            continue
+        value = node[key]
+        if value is None:  # present but nothing to score, e.g. no unanswerable rows in a --limit run
             continue
         if "min" in bounds and value < bounds["min"]:
             violations.append(f"{path} = {value} < min {bounds['min']}")

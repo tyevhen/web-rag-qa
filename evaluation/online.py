@@ -1,4 +1,5 @@
 import logging
+import math
 
 from ragas import SingleTurnSample
 
@@ -38,7 +39,11 @@ async def score_recent(repo: DocumentRepository, limit: int) -> int:
             response=row["answer"],
             retrieved_contexts=[c["content"] for c in chunks],
         )
-        await repo.save_eval_scores(row["run_id"], await _score_sample(sample), judge)
+        # A stored row marks the run as scored, so failed (None/NaN) metrics are left out to be retried next night
+        scores = {k: v for k, v in (await _score_sample(sample)).items() if v is not None and not math.isnan(v)}
+        if not scores:
+            continue
+        await repo.save_eval_scores(row["run_id"], scores, judge)
         scored += 1
 
     means = await repo.recent_eval_means(_WINDOW_DAYS)

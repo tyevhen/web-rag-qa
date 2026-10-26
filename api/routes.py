@@ -10,6 +10,7 @@ from arq.jobs import Job, JobStatus
 from fastapi import APIRouter, Depends, HTTPException, Request
 from langchain_core.runnables import RunnableConfig
 
+from agent.graph import route_of
 from agent.state import AgentState
 from api.deps import get_arq_pool, get_graph, get_repo
 from api.limiter import limiter
@@ -64,7 +65,7 @@ async def ask(
         raise HTTPException(status_code=500, detail="Internal server error") from exc
 
     latency_ms = int((time.monotonic() - t0) * 1000)
-    route = "clarify" if result["clarifying_questions"] else "reason"
+    route = route_of(result)
     domain = urlparse(result["citations"][0]).netloc if result["citations"] else None
 
     try:
