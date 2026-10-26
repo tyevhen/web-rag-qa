@@ -2,7 +2,7 @@
 
 Agentic RAG question-answering service. Point it at a website — it crawls the pages, embeds the content into Postgres/pgvector, and answers natural-language questions over it with source citations.
 
-The deployment in this repo is configured as an **emergency preparedness assistant** over two public sources: Estonian disaster preparedness guidance ([olevalmis.ee](https://www.olevalmis.ee)) and Ukrainian tactical combat casualty care ([tccc.org.ua/en](https://tccc.org.ua/en)). The domain is set entirely by the `SYSTEM_PROMPT` environment variable — the pipeline itself is topic-agnostic.
+The deployment in this repo is configured as an **emergency preparedness assistant** over public sources on disaster preparedness, survival and tactical casualty care (see [Corpus sources](#corpus-sources)). The domain is set entirely by the `SYSTEM_PROMPT` environment variable — the pipeline itself is topic-agnostic.
 
 ## How it works
 
@@ -88,6 +88,19 @@ curl -X POST localhost:8000/ingest/url \
 
 curl localhost:8000/ingest/jobs/<job_id>
 ```
+
+#### Corpus sources
+
+The deployed corpus is exactly these four ingests. Re-run them against an empty database to rebuild it:
+
+| URL | `mode` | Content |
+|---|---|---|
+| `https://www.olevalmis.ee/en` | `crawl` | Estonian disaster preparedness guidance |
+| `https://tccc.org.ua/en` | `crawl` | Tactical Combat Casualty Care (Ukrainian project, English section) |
+| `https://archive.org/download/Fm21-76SurvivalManual/FM21-76_SurvivalManual_djvu.txt` | `single` | US Army FM 21-76 Survival Manual (OCR text) |
+| `https://archive.org/download/FM4-25.11/FM4-25.11_djvu.txt` | `single` | US Army FM 4-25.11 First Aid (OCR text) |
+
+Use the archive.org `/download/` plain-text URLs, not `/stream/` pages: the latter wrap the text in archive.org's site menu.
 
 ### Ask a question
 
