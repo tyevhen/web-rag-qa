@@ -4,7 +4,7 @@ from typing import Any
 from langchain_core.prompts import ChatPromptTemplate, MessagesPlaceholder
 
 from agent.config import TopicConfig
-from agent.nodes._llm import invoke_chain
+from agent.nodes._llm import invoke_lines
 from agent.nodes.decomposer import _history_messages
 from agent.state import AgentState
 
@@ -26,13 +26,12 @@ _prompt = ChatPromptTemplate.from_messages([
 def make_clarifier(config: TopicConfig):
     async def clarify(state: AgentState) -> dict[str, Any]:
         log.info("clarify: corpus had no relevant content for question=%r, generating clarifications", state["question"])
-        content = await invoke_chain(
+        options = await invoke_lines(
             _prompt,
             system_prompt=config.system_prompt,
             history=_history_messages(state["history"]),
             question=state["question"],
         )
-        options = [line.strip() for line in content.strip().splitlines() if line.strip()]
         log.info("clarify: generated %d options: %s", len(options), options)
         return {
             "answer": "I wasn't able to find a clear answer. Could you clarify what you mean?",

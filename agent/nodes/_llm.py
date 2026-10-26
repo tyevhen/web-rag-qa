@@ -1,3 +1,4 @@
+import re
 from functools import lru_cache
 from typing import Any
 
@@ -8,6 +9,8 @@ from langchain_openai import ChatOpenAI
 from settings import get_settings
 
 _HF_ROUTER_HOST = "router.huggingface.co"
+# "1. ", "2) ", "- ", "* ", "• " that models add despite "no numbering"
+_LIST_MARKER = re.compile(r"^\s*(?:\d+[.)]|[-*•])\s+")
 
 
 @lru_cache(maxsize=1)
@@ -29,3 +32,13 @@ def get_groq_llm() -> ChatOpenAI:
 
 async def invoke_chain(prompt: ChatPromptTemplate, **kwargs: Any) -> str:
     return await (prompt | get_groq_llm() | StrOutputParser()).ainvoke(kwargs)
+
+
+def parse_lines(content: str) -> list[str]:
+    """One item per non-blank line, list markers removed."""
+    # shortcut: a preamble line ("Here are the queries:") is kept as an item; filter it if evals show it happens
+    return [item for line in content.splitlines() if (item := _LIST_MARKER.sub("", line).strip())]
+
+
+async def invoke_lines(prompt: ChatPromptTemplate, **kwargs: Any) -> list[str]:
+    return parse_lines(await invoke_chain(prompt, **kwargs))

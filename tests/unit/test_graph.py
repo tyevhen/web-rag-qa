@@ -5,7 +5,7 @@ from langchain_core.language_models.fake_chat_models import FakeListChatModel
 
 from agent.config import TopicConfig
 from agent.graph import _after_grade, build_graph, route_of
-from agent.nodes import _llm, augmenter
+from agent.nodes import _llm
 from agent.state import AgentState, Chunk
 from db.repository import DocumentRepository
 
@@ -39,7 +39,6 @@ async def test_empty_clarifier_output_is_still_a_clarify_route(monkeypatch):
     # decompose, augment, clarify — the clarifier returns nothing, as gpt-oss does when it runs out of tokens
     llm = FakeListChatModel(responses=["sub question", "plain sub question", ""])
     monkeypatch.setattr(_llm, "get_groq_llm", lambda: llm)
-    monkeypatch.setattr(augmenter, "get_groq_llm", lambda: llm)
     monkeypatch.setattr("agent.nodes.retriever._embed_documents", lambda texts: [[0.0] for _ in texts])
     graph = build_graph(TopicConfig(system_prompt="test"), cast(DocumentRepository, EmptyRepo()))
 

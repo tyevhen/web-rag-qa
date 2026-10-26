@@ -10,6 +10,7 @@ from slowapi.errors import RateLimitExceeded
 
 from agent.config import get_agent_config
 from agent.graph import build_graph
+from agent.nodes._llm import get_groq_llm
 from api.limiter import limiter
 from api.logging_config import configure_logging
 from api.routes import router
@@ -30,6 +31,7 @@ async def lifespan(app: FastAPI):
         if settings.langchain_project:
             os.environ["LANGCHAIN_PROJECT"] = settings.langchain_project
 
+    get_groq_llm()  # fail fast on a bad LLM config (e.g. HF URL without HF_TOKEN), not on the first /ask
     config = get_agent_config()
     pool = await create_pool()
     repo = DocumentRepository(pool)
