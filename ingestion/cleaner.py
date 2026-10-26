@@ -6,7 +6,8 @@ from ingestion.scraper import RawChunk
 
 log = logging.getLogger(__name__)
 
-_LINK_OR_IMAGE = re.compile(r"!?\[[^\]]*\]\([^)]*\)")
+_IMAGE = re.compile(r"!\[[^\]]*\]\([^)]*\)")
+_LINK = re.compile(r"\[[^\]]*\]\([^)]*\)")
 _MARKERS = re.compile(r"^(?:#+|\d+[.)]|[-*•])\s*")
 # Template text (login boxes, share/donate prompts) repeats across a site; real content rarely does
 _MIN_PAGES = 10
@@ -16,7 +17,8 @@ _MAX_PAGE_SHARE = 0.2
 def _is_navigation(line: str) -> bool:
     """Menus, breadcrumbs, share buttons, link-only headings: nothing is left once links are removed."""
     # shortcut: a paragraph written entirely as one link is dropped too; rare in article text
-    return not any(c.isalpha() for c in _MARKERS.sub("", _LINK_OR_IMAGE.sub("", line).strip()))
+    # Images first: a linked image "[ ![alt](img) ](href)" only becomes a plain link once its image is gone
+    return not any(c.isalpha() for c in _MARKERS.sub("", _LINK.sub("", _IMAGE.sub("", line)).strip()))
 
 
 def _template_lines(pages: list[RawChunk]) -> set[str]:
