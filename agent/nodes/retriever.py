@@ -1,6 +1,7 @@
+import asyncio
 import logging
 
-from agent.embed import embed_query as _embed_query
+from agent.embed import embed_documents as _embed_documents
 from agent.state import AgentState, Chunk
 from db.repository import DocumentRepository
 
@@ -25,9 +26,11 @@ def make_retriever(repo: DocumentRepository):
 
         log.info("retrieve: retry_count=%d, %d queries: %s", state["retry_count"], len(queries), queries)
 
-        for i, query in enumerate(queries, start=1):
+        # One batch, off the event loop: encoding is CPU-bound and blocks every other request
+        embeddings = await asyncio.to_thread(_embed_documents, queries)
+
+        for i, (query, query_embedding) in enumerate(zip(queries, embeddings), start=1):
             # Dense leg — pgvector cosine similarity
-            query_embedding = _embed_query(query)
             dense_rows = await repo.similarity_search(query_embedding, _TOP_K)
             dense_ids: list[str] = []
             for row in dense_rows:

@@ -20,6 +20,8 @@ def get_groq_llm() -> ChatOpenAI:
         model=s.groq_model,
         api_key=s.hf_token if use_hf else s.groq_api_key,
         base_url=s.llm_base_url,
+        temperature=0,  # repeatable answers, so eval runs are comparable
+        timeout=30,  # per attempt; the client default (600 s) lets a stalled provider hang /ask
         # Free tiers return 429 on per-minute token limits; the client backs off using retry-after
         max_retries=6,
     )
