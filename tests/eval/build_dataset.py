@@ -15,7 +15,8 @@ import logging
 import numpy as np
 from langchain_core.documents import Document
 from ragas import SingleTurnSample
-from ragas.testset import Testset, TestsetGenerator
+from ragas.executor import Executor
+from ragas.testset import TestsetGenerator
 from ragas.testset.persona import Persona
 from ragas.testset.synthesizers.single_hop.specific import SingleHopSpecificQuerySynthesizer
 from ragas.testset.transforms.extractors.llm_based import NERExtractor
@@ -63,20 +64,24 @@ async def _sample_chunks(n: int) -> list[str]:
 def _generate(chunks: list[str], size: int) -> list[GoldenRow]:
     llm = get_judge_llm()
     generator = TestsetGenerator(llm=llm, embedding_model=get_judge_embeddings(), persona_list=_PERSONAS)
-    testset = generator.generate_with_langchain_docs(
+    synth = SingleHopSpecificQuerySynthesizer(llm=llm)
+    executor = generator.generate_with_langchain_docs(
         [Document(page_content=c) for c in chunks],
         testset_size=size,
         # Only the entities the single-hop synthesizer needs; default pipeline costs ~4 LLM calls per chunk
         transforms=[NERExtractor(llm=llm)],
-        query_distribution=[(SingleHopSpecificQuerySynthesizer(llm=llm), 1.0)],
+        query_distribution=[(synth, 1.0)],
         run_config=RUN_CONFIG,
+        # One malformed judge reply would otherwise discard the whole batch. Taking the executor
+        # lets failed samples come back as NaN, which the isinstance check below drops.
+        raise_exceptions=False,
+        return_executor=True,
     )
-    if not isinstance(testset, Testset):
-        raise TypeError(f"TestsetGenerator returned {type(testset).__name__}, expected Testset")
+    if not isinstance(executor, Executor):
+        raise TypeError(f"TestsetGenerator returned {type(executor).__name__}, expected Executor")
     chunk_vecs = np.array(embed_documents(chunks))
     rows: list[GoldenRow] = []
-    for sample in testset.samples:
-        s = sample.eval_sample
+    for s in executor.results():
         if not isinstance(s, SingleTurnSample) or not isinstance(s.user_input, str):
             continue
         contexts = s.reference_contexts or []
@@ -86,7 +91,7 @@ def _generate(chunks: list[str], size: int) -> list[GoldenRow]:
             reference=s.reference or "",
             reference_contexts=contexts,
             reference_context_hashes=_source_hashes(contexts, chunks, chunk_vecs),
-            synthesizer=sample.synthesizer_name,
+            synthesizer=synth.name,
         ))
     return rows
 
