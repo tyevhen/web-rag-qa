@@ -10,7 +10,11 @@ import argparse
 import asyncio
 import logging
 import sys
+from pathlib import Path
 from typing import Any
+
+from langchain_community.cache import SQLiteCache
+from langchain_core.globals import set_llm_cache
 
 from agent.config import get_agent_config
 from agent.graph import build_graph
@@ -21,6 +25,9 @@ from tests.eval import deterministic, ragas_metrics, report
 from tests.eval.dataset import load_golden
 from tests.eval.runner import RunResult, run_all
 from tests.eval.thresholds import check_thresholds
+
+# Keyed by prompt + model params: a rerun only calls the LLM where its inputs changed. Delete it to resample.
+_LLM_CACHE = Path(__file__).parent / "results" / "llm_cache.sqlite"
 
 
 def _deterministic(results: list[RunResult]) -> dict[str, Any]:
@@ -35,6 +42,8 @@ def _deterministic(results: list[RunResult]) -> dict[str, Any]:
 
 async def main(skip_llm: bool, limit: int | None) -> int:
     rows = load_golden()[:limit]
+    _LLM_CACHE.parent.mkdir(exist_ok=True)
+    set_llm_cache(SQLiteCache(database_path=str(_LLM_CACHE)))
     pool = await create_pool()
     try:
         repo = DocumentRepository(pool)

@@ -14,8 +14,12 @@ _prompt = ChatPromptTemplate.from_messages([
     ("system", "{system_prompt}"),
     MessagesPlaceholder("history"),
     ("human",
-     "Break the following question into 2-3 specific sub-questions that "
-     "together fully answer it. Return only the sub-questions, one per line.\n\n"
+     "Rewrite the question below as search queries for a document index. "
+     "If it asks about one thing, return 1 query; if it asks about several things, return 2-3, one per thing. "
+     "Each query must stand alone (resolve 'it', 'that' from the conversation). "
+     "Do not answer, refuse or ask the user anything: a query is never addressed to the user, "
+     "and whether the question is in scope is decided later. "
+     "Return only the queries, one per line.\n\n"
      "Question: {question}"),
 ])
 
