@@ -1,7 +1,6 @@
 import logging
 import time
 import uuid
-from urllib.parse import urlparse
 
 import structlog
 
@@ -66,7 +65,8 @@ async def ask(
 
     latency_ms = int((time.monotonic() - t0) * 1000)
     route = route_of(result)
-    domain = urlparse(result["citations"][0]).netloc if result["citations"] else None
+    # Citations are formatted strings, not URLs; the chunk metadata holds the source netloc
+    domain = result["graded_chunks"][0].metadata.get("source") if result["graded_chunks"] else None
 
     try:
         await repo.log_query(QueryLogEntry(
