@@ -6,8 +6,10 @@ from ingestion.scraper import RawChunk
 
 log = logging.getLogger(__name__)
 
-_IMAGE = re.compile(r"!\[[^\]]*\]\([^)]*\)")
-_LINK = re.compile(r"\[[^\]]*\]\([^)]*\)")
+# Markdown escapes brackets inside alt text and titles, e.g. [ ](url "Bag Valve Mask \(BVM\)")
+_LINK_PATTERN = r"\[(?:\\.|[^\]\\])*\]\((?:\\.|[^)\\])*\)"
+_IMAGE = re.compile("!" + _LINK_PATTERN)
+_LINK = re.compile(_LINK_PATTERN)
 _MARKERS = re.compile(r"^(?:#+|\d+[.)]|[-*•])\s*")
 # Template text (login boxes, share/donate prompts) repeats across a site; real content rarely does
 _MIN_PAGES = 10

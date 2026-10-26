@@ -24,7 +24,8 @@ def test_small_crawls_keep_repeated_lines():
 def test_link_only_heading_dropped_inline_links_kept_and_empty_pages_removed():
     pages = [
         RawChunk(content="# [See other formats](https://archive.org/details/x)\nSee [the guide](https://g) for doses.", metadata={}),
-        RawChunk(content="1. [ Home ](https://x)\n![logo](https://x/logo.png)\n[ ![Card \\(CUF\\)](https://x/c.jpg) ](https://x/c)",
+        RawChunk(content="1. [ Home ](https://x)\n![logo](https://x/logo.png)\n[ ![Card \\(CUF\\)](https://x/c.jpg) ](https://x/c)"
+                         '\n[ ](https://x/b "Bag Valve Mask \\(BVM\\)")',
                  metadata={}),
     ]
 
