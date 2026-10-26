@@ -9,6 +9,7 @@ from agent.embed import embed_documents as _embed_documents
 from agent.nodes._llm import get_groq_llm
 from db.repository import DocumentRepository
 from ingestion.chunker import chunk_raw
+from ingestion.cleaner import strip_layout
 from ingestion.evaluator import evaluate_chunks
 from ingestion.scraper import RawChunk, scrape_single, scrape_site
 
@@ -32,7 +33,7 @@ async def _embed_and_store(repo: DocumentRepository, doc_id: str, chunks: list[R
 
 
 async def ingest_url(url: str, repo: DocumentRepository, crawler, mode: str = "crawl") -> tuple[str, int]:
-    raw = await (scrape_single(url, crawler) if mode == "single" else scrape_site(url, crawler))
+    raw = strip_layout(await (scrape_single(url, crawler) if mode == "single" else scrape_site(url, crawler)))
     if not raw:
         raise RuntimeError(f"No content scraped from {url!r}")
 

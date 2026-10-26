@@ -17,7 +17,9 @@ class RawChunk:
 log = logging.getLogger(__name__)
 
 _CRAWL_CONFIG = CrawlerRunConfig(
-    check_robots_txt=False, mean_delay=0.2, max_range=0.3, verbose=False
+    check_robots_txt=False, mean_delay=0.2, max_range=0.3, verbose=False,
+    # Semantic layout only; <header> stays because some sites put the article title in it
+    excluded_tags=["nav", "footer"],
 )
 
 
