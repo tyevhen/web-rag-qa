@@ -8,7 +8,7 @@ from langgraph.graph.state import CompiledStateGraph
 from agent.config import TopicConfig
 from agent.nodes.augmenter import make_augmenter
 from agent.nodes.clarifier import make_clarifier
-from agent.nodes.decomposer import make_decomposer
+from agent.nodes.decomposer import decompose
 from agent.nodes.formatter import format_response
 from agent.nodes.grader import grade
 from agent.nodes.reasoner import make_reasoner
@@ -49,7 +49,7 @@ def route_of(state: Mapping[str, Any]) -> str:
 def build_graph(config: TopicConfig, repo: DocumentRepository) -> CompiledStateGraph:
     graph = StateGraph(AgentState)
 
-    graph.add_node("decompose", make_decomposer(config))
+    graph.add_node("decompose", decompose)
     graph.add_node("retrieve", make_retriever(repo))
     graph.add_node("grade", grade)
     graph.add_node("retry", _increment_retry)

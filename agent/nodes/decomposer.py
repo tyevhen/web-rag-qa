@@ -4,14 +4,14 @@ from typing import Any
 from langchain_core.messages import AIMessage, BaseMessage, HumanMessage
 from langchain_core.prompts import ChatPromptTemplate, MessagesPlaceholder
 
-from agent.config import TopicConfig
 from agent.nodes._llm import invoke_lines
 from agent.state import AgentState
 
 log = logging.getLogger(__name__)
 
+# No persona system prompt: its "out of scope" rule made the model write refusals as queries.
+# Scope is enforced by the reasoner and clarifier.
 _prompt = ChatPromptTemplate.from_messages([
-    ("system", "{system_prompt}"),
     MessagesPlaceholder("history"),
     ("human",
      "Rewrite the question below as search queries for a document index. "
@@ -29,17 +29,13 @@ def _history_messages(history: list[dict]) -> list[BaseMessage]:
     return [role_map[t["role"]](content=t["content"]) for t in history if t["role"] in role_map]
 
 
-def make_decomposer(config: TopicConfig):
-    async def decompose(state: AgentState) -> dict[str, Any]:
-        log.info("decompose: question=%r history_turns=%d", state["question"], len(state["history"]))
-        lines = await invoke_lines(
-            _prompt,
-            system_prompt=config.system_prompt,
-            history=_history_messages(state["history"]),
-            question=state["question"],
-        )
-        sub_questions = lines or [state["question"]]
-        log.info("decompose: %d sub_questions: %s", len(sub_questions), sub_questions)
-        return {"sub_questions": sub_questions}
-
-    return decompose
+async def decompose(state: AgentState) -> dict[str, Any]:
+    log.info("decompose: question=%r history_turns=%d", state["question"], len(state["history"]))
+    lines = await invoke_lines(
+        _prompt,
+        history=_history_messages(state["history"]),
+        question=state["question"],
+    )
+    sub_questions = lines or [state["question"]]
+    log.info("decompose: %d sub_questions: %s", len(sub_questions), sub_questions)
+    return {"sub_questions": sub_questions}
