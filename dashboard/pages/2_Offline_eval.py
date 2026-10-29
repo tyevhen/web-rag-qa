@@ -4,6 +4,7 @@ import pandas as pd
 import streamlit as st
 
 from dashboard.data import load_result, result_files
+from dashboard.views import run_label
 from tests.eval.thresholds import THRESHOLDS_PATH, check_thresholds, lookup as lookup_any
 
 st.set_page_config(page_title="Offline eval", layout="wide")
@@ -43,8 +44,7 @@ else:
     ).set_index("run")
     st.line_chart(trend.dropna(axis=1, how="all"))
 
-labels = [f"{r['meta']['timestamp']} · judge: {r['meta']['judge']} · {r['meta']['rows']} rows"
-          + (" · mostly errors" if broken(r) else "") for r in runs]
+labels = [run_label(r) + (" · mostly errors" if broken(r) else "") for r in runs]
 default = next((i for i, r in enumerate(runs) if not broken(r)), 0)
 run = runs[st.selectbox("Run", range(len(runs)), index=default, format_func=lambda i: labels[i])]
 

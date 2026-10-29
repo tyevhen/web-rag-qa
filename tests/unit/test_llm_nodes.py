@@ -58,3 +58,25 @@ async def test_reasoner_numbers_context_in_graded_order_and_maps_history(monkeyp
     assert isinstance(user_turn, HumanMessage) and user_turn.content == "hi"  # unknown "tool" role dropped
     assert isinstance(ai_turn, AIMessage) and ai_turn.content == "hello"
     assert "[1] first\n\n---\n\n[2] second" in str(question.content)
+
+
+async def test_reasoner_rewrites_full_width_citations(monkeypatch):
+    async def fake(prompt, **kwargs):
+        return "Warm it【1】. Do not rub【2†L9-L12】."
+
+    monkeypatch.setattr(reasoner, "invoke_chain", fake)
+    chunks = [Chunk(content=t, metadata={}, id=t, score=0.0) for t in ("a", "b")]
+
+    result = await reasoner.make_reasoner(TopicConfig(system_prompt="p"))(_state(graded_chunks=chunks))
+
+    assert result == {"answer": "Warm it[1]. Do not rub[2]."}
+
+
+def test_use_model_overrides_llm_only_inside_block():
+    default = _llm.get_groq_llm()
+
+    with _llm.use_model("http://localhost:11434/v1", "web-rag-llm"):
+        local = _llm.get_groq_llm()
+
+    assert (local.model_name, local.openai_api_base) == ("web-rag-llm", "http://localhost:11434/v1")
+    assert _llm.get_groq_llm() is default

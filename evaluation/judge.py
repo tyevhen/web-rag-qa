@@ -6,7 +6,7 @@ from ragas import RunConfig
 from ragas.embeddings import BaseRagasEmbeddings, LangchainEmbeddingsWrapper
 from ragas.llms import BaseRagasLLM, LangchainLLMWrapper
 
-from agent.embed import embed_documents, embed_query
+from agent.embed import ENCODERS, embed_documents
 from settings import get_settings
 
 _BASE_URLS = {
@@ -18,14 +18,19 @@ _BASE_URLS = {
 RUN_CONFIG = RunConfig(max_workers=1, max_retries=10, max_wait=60, timeout=180)
 
 
-class MiniLMEmbeddings(Embeddings):
-    """LangChain adapter over the app's own all-MiniLM-L6-v2 — local, no API cost."""
+_JUDGE_ENCODER = ENCODERS["BAAI/bge-small-en-v1.5"]
+
+
+class LocalEmbeddings(Embeddings):
+    """LangChain adapter over the app's own bge-small embedder — local, no API cost."""
 
     def embed_documents(self, texts: list[str]) -> list[list[float]]:
-        return embed_documents(texts)
+        # Pinned, not Settings.embedder: comparing search encoders must not change how the judge scores
+        return embed_documents(texts, _JUDGE_ENCODER)
 
     def embed_query(self, text: str) -> list[float]:
-        return embed_query(text)
+        # No query prefix: answer_relevancy compares question to question, so both sides must embed alike
+        return embed_documents([text], _JUDGE_ENCODER)[0]
 
 
 def judge_model_name() -> str:
@@ -46,7 +51,8 @@ def get_judge_chat() -> ChatOpenAI:
         # gpt-oss is a reasoning model: default effort burns ~4x the tokens and can hit the length limit
         # mid-thought (ragas LLMDidNotFinishException). Judging/extraction needs little reasoning.
         reasoning_effort="low",
-        max_completion_tokens=2048,
+        # 2048 ran out while extracting statements from long answers, which came back NaN
+        max_completion_tokens=4096,
     )
 
 
@@ -58,4 +64,4 @@ def get_judge_llm() -> BaseRagasLLM:
 
 @lru_cache(maxsize=1)
 def get_judge_embeddings() -> BaseRagasEmbeddings:
-    return LangchainEmbeddingsWrapper(MiniLMEmbeddings(), run_config=RUN_CONFIG)
+    return LangchainEmbeddingsWrapper(LocalEmbeddings(), run_config=RUN_CONFIG)

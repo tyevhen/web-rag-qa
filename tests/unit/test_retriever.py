@@ -15,7 +15,7 @@ class FakeRepo:
     def as_repo(self) -> DocumentRepository:
         return cast(DocumentRepository, self)
 
-    async def similarity_search(self, embedding: list[float], k: int) -> list[dict]:
+    async def similarity_search(self, embedding: list[float], k: int, encoder: str) -> list[dict]:
         return [{"id": i, "content": i, "metadata": {}} for i in self.dense[:k]]
 
     async def fulltext_search(self, query: str, k: int) -> list[dict]:
@@ -30,18 +30,18 @@ def _state(question: str, sub_questions: list[str]) -> AgentState:
 async def test_embeds_off_the_event_loop_once_per_unique_query(monkeypatch):
     calls: list[tuple[list[str], bool]] = []
 
-    def fake_embed(texts: list[str]) -> list[list[float]]:
+    def fake_embed(texts: list[str], encoder: object) -> list[list[float]]:
         calls.append((texts, threading.current_thread() is threading.main_thread()))
         return [[0.0] for _ in texts]
 
-    monkeypatch.setattr(retriever, "_embed_documents", fake_embed)
+    monkeypatch.setattr(retriever, "_embed_queries", fake_embed)
     await retriever.make_retriever(FakeRepo(["a"], []).as_repo())(_state("q", ["q", "s1"]))
 
     assert calls == [(["q", "s1"], False)]
 
 
 async def test_rrf_ranks_chunks_found_by_both_legs_first(monkeypatch):
-    monkeypatch.setattr(retriever, "_embed_documents", lambda texts: [[0.0] for _ in texts])
+    monkeypatch.setattr(retriever, "_embed_queries", lambda texts, encoder: [[0.0] for _ in texts])
     repo = FakeRepo(dense=["a", "b", "c"], sparse=["c", "d"])
     out = await retriever.make_retriever(repo.as_repo())(_state("q", []))
 

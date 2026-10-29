@@ -15,7 +15,10 @@ from api.limiter import limiter
 from api.logging_config import configure_logging
 from api.routes import router
 from db.client import create_pool
+from db.embedding_repository import EmbeddingRepository
+from db.query_log_repository import QueryLogRepository
 from db.repository import DocumentRepository
+from services.encoders import check_ready
 from settings import get_settings
 
 configure_logging()
@@ -34,9 +37,11 @@ async def lifespan(app: FastAPI):
     get_groq_llm()  # fail fast on a bad LLM config (e.g. HF URL without HF_TOKEN), not on the first /ask
     config = get_agent_config()
     pool = await create_pool()
-    repo = DocumentRepository(pool)
-    app.state.repo = repo
-    app.state.graph = build_graph(config, repo)
+    await check_ready(EmbeddingRepository(pool))  # refuse to serve search over a half-backfilled encoder
+    documents = DocumentRepository(pool)
+    app.state.documents = documents
+    app.state.query_log = QueryLogRepository(pool)
+    app.state.graph = build_graph(config, documents)
     app.state.topic_config = config
     arq_pool = await arq.create_pool(RedisSettings.from_dsn(settings.redis_url))
     app.state.arq_pool = arq_pool

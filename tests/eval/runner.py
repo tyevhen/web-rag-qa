@@ -6,7 +6,7 @@ from typing import Any, cast
 
 from langgraph.graph.state import CompiledStateGraph
 
-from agent.embed import embed_query
+from agent.embed import embed_query, get_encoder
 from agent.graph import route_of
 from agent.nodes.grader import grading_queries, score_chunks
 from agent.nodes.retriever import make_retriever
@@ -50,7 +50,7 @@ def _initial_state(row: GoldenRow, sub_questions: list[str] | None = None) -> Ag
 
 
 async def _ablation(repo: DocumentRepository, row: GoldenRow) -> dict[str, list[str]]:
-    dense = await repo.similarity_search(embed_query(row.question), _ABLATION_K)
+    dense = await repo.similarity_search(embed_query(row.question), _ABLATION_K, get_encoder().name)
     sparse = await repo.fulltext_search(row.question, _ABLATION_K)
     # Real retriever node with no sub-questions → hybrid over the raw question only
     hybrid = await make_retriever(repo)(_initial_state(row))

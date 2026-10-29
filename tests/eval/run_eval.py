@@ -3,6 +3,7 @@
     uv run python -m tests.eval.run_eval              # deterministic + Ragas LLM metrics
     uv run python -m tests.eval.run_eval --skip-llm   # deterministic only — free, CI-safe
     uv run python -m tests.eval.run_eval --limit 5    # smoke run
+    uv run python -m tests.eval.run_eval --golden my.jsonl  # your own questions: {"question", "category"} per line
 
 Exits 1 when any metric violates tests/eval/thresholds.json.
 """
@@ -19,10 +20,13 @@ from langchain_core.globals import set_llm_cache
 from agent.config import get_agent_config
 from agent.graph import build_graph
 from db.client import create_pool
+from db.embedding_repository import EmbeddingRepository
 from db.repository import DocumentRepository
 from evaluation.judge import judge_model_name
+from services.encoders import check_ready
+from settings import get_settings
 from tests.eval import deterministic, ragas_metrics, report
-from tests.eval.dataset import load_golden
+from tests.eval.dataset import GOLDEN_PATH, load_golden
 from tests.eval.runner import RunResult, run_all
 from tests.eval.thresholds import check_thresholds
 
@@ -40,26 +44,29 @@ def _deterministic(results: list[RunResult]) -> dict[str, Any]:
     }
 
 
-async def main(skip_llm: bool, limit: int | None) -> int:
-    rows = load_golden()[:limit]
+async def main(skip_llm: bool, limit: int | None, golden: Path) -> int:
+    rows = load_golden(golden)[:limit]
     _LLM_CACHE.parent.mkdir(exist_ok=True)
     set_llm_cache(SQLiteCache(database_path=str(_LLM_CACHE)))
     pool = await create_pool()
     try:
         repo = DocumentRepository(pool)
+        await check_ready(EmbeddingRepository(pool))  # a half-backfilled encoder would score as bad retrieval
         results = await run_all(build_graph(get_agent_config(), repo), repo, rows)
     finally:
         await pool.close()
 
     full: dict[str, Any] = {
-        "meta": report.meta(len(rows), None if skip_llm else judge_model_name()),
+        "meta": report.meta(len(rows), None if skip_llm else judge_model_name(), get_settings().groq_model,
+                            get_settings().embedder),
         "deterministic": _deterministic(results),
     }
+    scores: ragas_metrics.PerQuestion = {}
     if not skip_llm:
-        full["llm"] = await ragas_metrics.run(results)
+        full["llm"], scores = await ragas_metrics.run(results)
 
     violations = check_thresholds(full)
-    path = report.write(full, results, violations)
+    path = report.write(full, results, violations, scores)
     print(f"Full results → {path}")
     return 1 if violations else 0
 
@@ -70,5 +77,6 @@ if __name__ == "__main__":
     parser = argparse.ArgumentParser()
     parser.add_argument("--skip-llm", action="store_true")
     parser.add_argument("--limit", type=int, default=None)
+    parser.add_argument("--golden", type=Path, default=GOLDEN_PATH)
     args = parser.parse_args()
-    sys.exit(asyncio.run(main(args.skip_llm, args.limit)))
+    sys.exit(asyncio.run(main(args.skip_llm, args.limit, args.golden)))

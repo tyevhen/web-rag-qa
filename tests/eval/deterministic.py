@@ -3,6 +3,7 @@ import re
 import statistics
 
 from tests.eval.dataset import content_hash
+from tests.eval.refusal import is_refusal
 from tests.eval.runner import RunResult
 
 _MARKER = re.compile(r"\[(\d+)\]")
@@ -80,6 +81,11 @@ def routing(results: list[RunResult]) -> dict[str, float | None]:
     return {
         "false_refusal_rate": _rate(sum(1 for r in answerable if r.route == "clarify"), len(answerable)),
         "false_answer_rate": _rate(sum(1 for r in unanswerable if r.route == "reason"), len(unanswerable)),
+        # Route alone can't tell "the guide doesn't cover this" from a made-up answer; these read the text
+        "off_corpus_answered_rate": _rate(
+            sum(1 for r in unanswerable if r.route == "reason" and not is_refusal(r.answer)), len(unanswerable)),
+        "answerable_refused_in_text_rate": _rate(
+            sum(1 for r in answerable if r.route == "reason" and is_refusal(r.answer)), len(answerable)),
         "retry_rate": _rate(len(retried), len(ok)),
         "retry_success_rate": _rate(sum(1 for r in retried if r.route == "reason"), len(retried)),
     }

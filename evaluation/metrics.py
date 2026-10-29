@@ -23,4 +23,4 @@ def retrieval_metrics() -> list[SingleTurnMetric]:
 
 
 def correctness_metrics() -> list[SingleTurnMetric]:
-    return [FactualCorrectness(llm=get_judge_llm())]
+    return [FactualCorrectness(llm=get_judge_llm(), mode="recall")]

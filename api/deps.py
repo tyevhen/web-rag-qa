@@ -4,6 +4,7 @@ from fastapi.security import APIKeyHeader
 from langgraph.graph.state import CompiledStateGraph
 
 from agent.config import TopicConfig
+from db.query_log_repository import QueryLogRepository
 from db.repository import DocumentRepository
 from settings import get_settings
 
@@ -11,7 +12,11 @@ _api_key_header = APIKeyHeader(name="X-API-Key")
 
 
 def get_repo(request: Request) -> DocumentRepository:
-    return request.app.state.repo
+    return request.app.state.documents
+
+
+def get_query_log(request: Request) -> QueryLogRepository:
+    return request.app.state.query_log
 
 
 def get_graph(request: Request) -> CompiledStateGraph:

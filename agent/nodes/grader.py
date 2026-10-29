@@ -31,7 +31,7 @@ def grading_queries(question: str, sub_questions: list[str]) -> list[str]:
 
 def score_chunks(queries: list[str], chunks: list[Chunk]) -> list[float]:
     """Best cross-encoder logit per chunk across all queries — a chunk answering one sub-question is relevant."""
-    # Whole chunk: chunks are capped at 1500 chars (~400 tokens), within the model's 512-token window
+    # Chunks are capped at 512 tokens; with the question added, a chunk near the cap loses its last few tokens here
     pairs = [(q, chunk.content) for chunk in chunks for q in queries]
     flat = _get_model().predict(pairs)
     n = len(queries)

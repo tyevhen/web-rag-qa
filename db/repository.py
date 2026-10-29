@@ -1,30 +1,14 @@
 import uuid
-from dataclasses import dataclass
 
 import asyncpg
 from asyncpg import Pool
 
-from db.dashboard_queries import DashboardQueriesMixin
-from db.eval_queries import EvalQueriesMixin
+from db.embedding_repository import encoder_literal
 
 
-@dataclass
-class QueryLogEntry:
-    run_id: str
-    question: str
-    answer: str
-    domain: str | None
-    latency_ms: int
-    route: str
-    sub_question_count: int
-    retrieved_chunk_count: int
-    graded_chunk_count: int
-    retry_count: int
-    citations: list[str]
-    graded_chunk_ids: list[str]
+class DocumentRepository:
+    """Documents and their chunks: ingestion writes, search, and chunk reads for eval and the dashboard."""
 
-
-class DocumentRepository(EvalQueriesMixin, DashboardQueriesMixin):
     def __init__(self, pool: Pool) -> None:
         self._pool = pool
 
@@ -42,23 +26,30 @@ class DocumentRepository(EvalQueriesMixin, DashboardQueriesMixin):
         doc_id: str,
         contents: list[str],
         metadatas: list[dict],
-        embeddings: list[list[float]],
+        embeddings: dict[str, list[list[float]]],
     ) -> None:
-        await self._pool.executemany(
-            "INSERT INTO chunks (document_id, content, metadata, embedding) VALUES ($1, $2, $3, $4)",
-            [
-                (uuid.UUID(doc_id), content, metadata, embedding)
-                for content, metadata, embedding in zip(contents, metadatas, embeddings)
-            ],
-        )
+        """Chunks and one vector per chunk for each encoder in `embeddings`, all or nothing."""
+        ids = [uuid.uuid4() for _ in contents]
+        async with self._pool.acquire() as conn, conn.transaction():
+            await conn.executemany(
+                "INSERT INTO chunks (id, document_id, content, metadata) VALUES ($1, $2, $3, $4)",
+                [(i, uuid.UUID(doc_id), c, m) for i, c, m in zip(ids, contents, metadatas)],
+            )
+            await conn.executemany(
+                "INSERT INTO chunk_embeddings (chunk_id, encoder, embedding) VALUES ($1, $2, $3)",
+                [(i, encoder, v) for encoder, vectors in embeddings.items() for i, v in zip(ids, vectors)],
+            )
 
-    async def similarity_search(self, embedding: list[float], k: int) -> list[asyncpg.Record]:
+    async def similarity_search(self, embedding: list[float], k: int, encoder: str) -> list[asyncpg.Record]:
+        # Encoder and size inlined so the query matches that encoder's partial index (db/embedding_repository.py)
+        vec = f"e.embedding::vector({len(embedding)})"
         return await self._pool.fetch(
-            """
-            SELECT id::text, content, metadata,
-                   1 - (embedding <=> $1) AS score
-            FROM chunks
-            ORDER BY embedding <=> $1
+            f"""
+            SELECT c.id::text, c.content, c.metadata, 1 - ({vec} <=> $1) AS score
+            FROM chunk_embeddings e
+            JOIN chunks c ON c.id = e.chunk_id
+            WHERE e.encoder = {encoder_literal(encoder)}
+            ORDER BY {vec} <=> $1
             LIMIT $2
             """,
             embedding,
@@ -102,25 +93,26 @@ class DocumentRepository(EvalQueriesMixin, DashboardQueriesMixin):
         )
         return [row["section"] for row in rows]
 
-    async def log_query(self, entry: QueryLogEntry) -> None:
-        await self._pool.execute(
+    async def sample_chunks(self, n: int) -> list[asyncpg.Record]:
+        return await self._pool.fetch(
+            "SELECT id::text, content, metadata FROM chunks ORDER BY random() LIMIT $1",
+            n,
+        )
+
+    async def get_chunks_by_ids(self, ids: list[str]) -> list[asyncpg.Record]:
+        return await self._pool.fetch(
+            "SELECT id::text, content, metadata FROM chunks WHERE id = ANY($1::uuid[])",
+            [uuid.UUID(i) for i in ids],
+        )
+
+    async def chunk_embeddings(self, encoder: str) -> list[asyncpg.Record]:
+        return await self._pool.fetch(
             """
-            INSERT INTO query_log (
-                run_id, question, answer, domain, latency_ms, route,
-                sub_question_count, retrieved_chunk_count, graded_chunk_count,
-                retry_count, citations, graded_chunk_ids
-            ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12)
+            SELECT c.id::text, c.content, e.embedding, d.filename AS source, d.uploaded_at
+            FROM chunks c
+            JOIN documents d ON d.id = c.document_id
+            JOIN chunk_embeddings e ON e.chunk_id = c.id AND e.encoder = $1
+            ORDER BY d.uploaded_at, (c.metadata->>'chunk_index')::int
             """,
-            uuid.UUID(entry.run_id),
-            entry.question,
-            entry.answer,
-            entry.domain,
-            entry.latency_ms,
-            entry.route,
-            entry.sub_question_count,
-            entry.retrieved_chunk_count,
-            entry.graded_chunk_count,
-            entry.retry_count,
-            entry.citations,
-            [uuid.UUID(i) for i in entry.graded_chunk_ids],
+            encoder,
         )

@@ -13,7 +13,7 @@ The deployment in this repo is configured as an **emergency preparedness assista
 1. **Crawls** the site's sitemap with crawl4ai (Playwright-rendered, JS-capable), or a single page in `single` mode.
 2. **Chunks** each page on Markdown headings, keeping `url`, `source` and `section` metadata.
 3. **Filters** chunks: under 20 words, under 50% alphabetic characters, exact duplicates (MD5) and non-English text (langdetect) are dropped.
-4. **Embeds** chunks with `all-MiniLM-L6-v2` (384-dim, L2-normalised) and stores them in pgvector (HNSW index) alongside a full-text GIN index.
+4. **Embeds** chunks with `BAAI/bge-small-en-v1.5` (384-dim, L2-normalised; chunks are capped at its 512-token window so none are cut off) and stores them in pgvector (one HNSW index per encoder) alongside a full-text GIN index. See [Switching encoders](#switching-encoders).
 
 ### Question answering
 
@@ -31,7 +31,7 @@ decompose → retrieve → grade ─┬─ ≥2 relevant chunks ─────�
 |---|---|
 | `decompose` | LLM splits the question into 2–3 sub-questions, using conversation history for follow-ups |
 | `retrieve` | Hybrid search per sub-question: pgvector cosine + Postgres full-text search (top 10 each), fused with Reciprocal Rank Fusion (k=60), top 6 kept |
-| `grade` | Cross-encoder (`ms-marco-MiniLM-L-6-v2`) scores each chunk against the question; chunks scoring below 0 are dropped |
+| `grade` | Cross-encoder (`ms-marco-MiniLM-L-6-v2`) scores each chunk against the question; chunks scoring below −1.0 are dropped |
 | `augment` | On retry, LLM rewrites sub-questions with broader domain vocabulary before retrieving again (max one retry) |
 | `reason` | LLM answers from the numbered graded chunks |
 | `format` | Attaches citations (URL, source, section) |
@@ -137,6 +137,34 @@ Set in `.env` (see `.env.example`):
 | `REDIS_URL` | no | Default `redis://localhost:6379` |
 | `ALLOWED_ORIGINS` | no | Comma-separated CORS origins, default `*` |
 | `LANGCHAIN_TRACING_V2`, `LANGCHAIN_API_KEY`, `LANGCHAIN_PROJECT` | no | LangSmith tracing |
+| `LLM_BASE_URL` | no | OpenAI-compatible endpoint, default Groq |
+| `LLM_TIMEOUT` | no | Seconds per LLM attempt, default 30 |
+| `EMBEDDER` | no | Encoder search uses (`agent/embed.py` `ENCODERS`), default `BAAI/bge-small-en-v1.5` |
+| `SHADOW_EMBEDDERS` | no | JSON list of extra encoders ingestion also writes, e.g. `'["sentence-transformers/all-MiniLM-L6-v2"]'` |
+
+### Switching encoders
+
+Vectors from different encoders are not comparable, so a query must be encoded by the same model as the passages it searches. Each chunk can hold one vector per encoder (`chunk_embeddings` table), which allows a switch without downtime or a re-crawl:
+
+1. Add the encoder to `ENCODERS` in `agent/embed.py` and to `SHADOW_EMBEDDERS`; deploy. New ingestions now write both.
+2. `uv run python -m services.encoders backfill <name>` — vectors for the older chunks, then its search index.
+3. Set `EMBEDDER=<name>` and restart. The API refuses to start if any chunk lacks a vector for it.
+4. Remove the old encoder from `SHADOW_EMBEDDERS`, then `uv run python -m services.encoders drop <old name>`.
+
+`uv run python -m services.encoders status` shows how many chunks each encoder covers. To compare two encoders on the same passages, backfill the second one and run the eval with `EMBEDDER=<name>` set for that run; the run records which encoder searched. Chunks are sized to the search encoder's window, so an encoder with a smaller window sees long chunks cut off.
+
+### Local LLM
+
+The app can generate answers with a local open-weights model through [Ollama](https://ollama.com), which serves the same OpenAI-compatible API. On macOS run it natively: Docker on a Mac cannot use the GPU.
+
+```bash
+brew install ollama && brew services start ollama   # background service on :11434, starts at login
+ollama create web-rag-llm -f llm/Modelfile           # pulls the base model (~4.7 GB) and pins the context size
+```
+
+Then set `LLM_BASE_URL=http://localhost:11434/v1`, `GROQ_MODEL=web-rag-llm` and `LLM_TIMEOUT=180` in `.env`. `GROQ_API_KEY` stays required because the eval judge still runs on Groq. To change the model, edit `FROM` in `llm/Modelfile` and run `ollama create` again. Remove the three lines to switch back to Groq.
+
+Expect answers in tens of seconds on an M1 laptop, against a few seconds on Groq. The service log is `$(brew --prefix)/var/log/ollama.log`; a "truncating input prompt" line there means `num_ctx` is too small.
 
 ## Testing
 
@@ -161,7 +189,7 @@ uv run python tests/eval/run_eval.py
 ```
 agent/        LangGraph graph, state, embeddings, nodes
 api/          FastAPI app, routes, dependencies, schemas, logging
-db/           asyncpg pool, repository (all SQL), migration runner, schema snapshot
+db/           asyncpg pool, repositories (all SQL, one per table area), migration runner, schema snapshot
 ingestion/    crawler, chunker, chunk quality filter
 services/     ingestion orchestration
 worker/       arq background worker

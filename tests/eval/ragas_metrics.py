@@ -14,6 +14,7 @@ from evaluation.metrics import correctness_metrics, reference_free_metrics, retr
 from tests.eval.runner import RunResult
 
 Scores = dict[str, list[float]]
+PerQuestion = dict[str, dict[str, float | None]]
 
 
 def _evaluate(samples: Sequence[SingleTurnSample], metrics: Sequence[Metric]) -> Scores:
@@ -38,11 +39,11 @@ def _sample(r: RunResult, contexts: list[str], with_response: bool = False) -> S
     )
 
 
-def _run_all(results: list[RunResult]) -> dict[str, Scores]:
+def _run_all(results: list[RunResult]) -> tuple[dict[str, Scores], PerQuestion]:
     ok = [r for r in results if not r.error]
     with_ref = [r for r in ok if r.row.reference and r.retrieved]
     answered = [r for r in ok if r.route == "reason" and r.graded]
-    return {
+    raw = {
         "retrieval": _evaluate([_sample(r, [c.content for c in r.retrieved]) for r in with_ref], retrieval_metrics()),
         # Same recall metric on the post-grader set; the difference = evidence the grader threw away
         "after_grading": _evaluate(
@@ -58,6 +59,15 @@ def _run_all(results: list[RunResult]) -> dict[str, Scores]:
             correctness_metrics(),
         ),
     }
+    # Each group's scores are in the order of the results it was built from
+    sources = {"retrieval": with_ref, "generation": answered,
+               "correctness": [r for r in answered if r.row.reference]}
+    per_question: PerQuestion = {}
+    for group, rs in sources.items():
+        for name, values in raw[group].items():
+            for r, v in zip(rs, values, strict=True):
+                per_question.setdefault(r.row.question, {})[name] = None if math.isnan(v) else round(v, 3)
+    return raw, per_question
 
 
 def _mean(values: list[float]) -> float | None:
@@ -84,7 +94,8 @@ def summarize(raw: dict[str, Scores], results: list[RunResult]) -> dict[str, Any
     }
 
 
-async def run(results: list[RunResult]) -> dict[str, Any]:
+async def run(results: list[RunResult]) -> tuple[dict[str, Any], PerQuestion]:
+    """Means per stage, and each question's scores ({question: {metric: score}}; None = judge failed)."""
     # ragas.evaluate drives its own event loop — keep it off ours
-    raw = await asyncio.to_thread(_run_all, results)
-    return summarize(raw, results)
+    raw, per_question = await asyncio.to_thread(_run_all, results)
+    return summarize(raw, results), per_question

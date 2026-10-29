@@ -27,4 +27,7 @@ if latest:
 
 st.page_link("pages/1_Corpus.py", label="Corpus: what is stored, topics, boilerplate")
 st.page_link("pages/2_Offline_eval.py", label="Offline eval: golden-set runs by pipeline stage")
+st.page_link("pages/4_Answers.py", label="Answers: read each golden conversation, its citations, and compare runs")
+st.page_link("pages/5_Compare_models.py", label="Compare models: two runs side by side, judge scores, interesting cases")
+st.page_link("pages/6_Chat.py", label="Chat: ask the pipeline with any model, two side by side")
 st.page_link("pages/3_Production.py", label="Production: live traffic and sampled answer quality")

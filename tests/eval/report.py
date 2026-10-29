@@ -8,7 +8,7 @@ from tests.eval.runner import RunResult
 from tests.eval.thresholds import RESULTS_DIR
 
 
-def _per_question(r: RunResult) -> dict[str, Any]:
+def _per_question(r: RunResult, scores: dict[str, Any]) -> dict[str, Any]:
     refs = set(r.row.reference_context_hashes)
     return {
         "question": r.row.question,
@@ -22,6 +22,10 @@ def _per_question(r: RunResult) -> dict[str, Any]:
         "retrieved_ref_hits": sum(1 for c in r.retrieved if content_hash(c.content) in refs),
         "graded_ref_hits": sum(1 for c in r.graded if content_hash(c.content) in refs),
         "error": r.error,
+        "history": r.row.history,
+        # The reasoner numbers these [1..n], so the dashboard can show what each citation points to
+        "context": [c.content for c in r.graded],
+        "scores": scores,
     }
 
 
@@ -39,10 +43,12 @@ def _markdown(report: dict[str, Any], violations: list[str]) -> str:
     return "\n".join(lines) + "\n"
 
 
-def write(report: dict[str, Any], results: list[RunResult], violations: list[str]) -> Path:
+def write(report: dict[str, Any], results: list[RunResult], violations: list[str],
+          scores: dict[str, dict[str, Any]]) -> Path:
     RESULTS_DIR.mkdir(parents=True, exist_ok=True)
     stem = RESULTS_DIR / report["meta"]["timestamp"].replace(":", "-")
-    full = {**report, "violations": violations, "questions": [_per_question(r) for r in results]}
+    questions = [_per_question(r, scores.get(r.row.question, {})) for r in results]
+    full = {**report, "violations": violations, "questions": questions}
     stem.with_suffix(".json").write_text(json.dumps(full, indent=2, ensure_ascii=False))
     md = _markdown(report, violations)
     stem.with_suffix(".md").write_text(md)
@@ -50,10 +56,12 @@ def write(report: dict[str, Any], results: list[RunResult], violations: list[str
     return stem.with_suffix(".json")
 
 
-def meta(rows: int, judge: str | None) -> dict[str, Any]:
+def meta(rows: int, judge: str | None, generator: str, embedder: str) -> dict[str, Any]:
     return {
         "timestamp": datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ"),
         "rows": rows,
         "judge": judge or "skipped",
+        "generator": generator,
+        "embedder": embedder,
     }
 

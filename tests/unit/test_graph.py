@@ -28,7 +28,7 @@ def test_after_grade(graded: int, retries: int, expected: str):
 
 
 class EmptyRepo:
-    async def similarity_search(self, embedding: list[float], k: int) -> list[dict]:
+    async def similarity_search(self, embedding: list[float], k: int, encoder: str) -> list[dict]:
         return []
 
     async def fulltext_search(self, query: str, k: int) -> list[dict]:
@@ -39,7 +39,7 @@ async def test_empty_clarifier_output_is_still_a_clarify_route(monkeypatch):
     # decompose, augment, clarify — the clarifier returns nothing, as gpt-oss does when it runs out of tokens
     llm = FakeListChatModel(responses=["sub question", "plain sub question", ""])
     monkeypatch.setattr(_llm, "get_groq_llm", lambda: llm)
-    monkeypatch.setattr("agent.nodes.retriever._embed_documents", lambda texts: [[0.0] for _ in texts])
+    monkeypatch.setattr("agent.nodes.retriever._embed_queries", lambda texts, encoder: [[0.0] for _ in texts])
     graph = build_graph(TopicConfig(system_prompt="test"), cast(DocumentRepository, EmptyRepo()))
 
     state = await graph.ainvoke(_state())
