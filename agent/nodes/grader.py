@@ -8,7 +8,10 @@ from agent.state import AgentState, Chunk
 
 log = logging.getLogger(__name__)
 
-_THRESHOLD = 0.0
+# Logit cutoff, tuned on the golden set with whole-chunk scoring: on-topic rows keep a chunk at any value in
+# [-2.0, -0.5] (15/18), while the best off-topic chunk scores <= -2.03. -1.0 keeps a 1-point margin from it;
+# 0.0 dropped relevant evidence (14/18, and fewer rows reached the 2 chunks needed to answer without retry).
+_THRESHOLD = -1.0
 _MODEL_NAME = "cross-encoder/ms-marco-MiniLM-L-6-v2"
 _model: CrossEncoder | None = None
 
@@ -21,18 +24,31 @@ def _get_model() -> CrossEncoder:
     return _model
 
 
+def grading_queries(question: str, sub_questions: list[str]) -> list[str]:
+    """Original question plus the decomposer's standalone sub-questions (they resolve history references)."""
+    return list(dict.fromkeys([question, *sub_questions]))
+
+
+def score_chunks(queries: list[str], chunks: list[Chunk]) -> list[float]:
+    """Best cross-encoder logit per chunk across all queries — a chunk answering one sub-question is relevant."""
+    # Chunks are capped at 512 tokens; with the question added, a chunk near the cap loses its last few tokens here
+    pairs = [(q, chunk.content) for chunk in chunks for q in queries]
+    flat = _get_model().predict(pairs)
+    n = len(queries)
+    return [float(max(flat[i * n : (i + 1) * n])) for i in range(len(chunks))]
+
+
 async def grade(state: AgentState) -> dict[str, Any]:
     chunks = state["retrieved_chunks"]
-    question = state["question"]
 
     if not chunks:
         log.info("grade: no chunks to score")
         return {"graded_chunks": []}
 
-    log.info("grade: scoring %d chunks (retry_count=%d)", len(chunks), state["retry_count"])
+    queries = grading_queries(state["question"], state["sub_questions"])
+    log.info("grade: scoring %d chunks against %d queries (retry_count=%d)", len(chunks), len(queries), state["retry_count"])
 
-    pairs = [(question, chunk.content[:500]) for chunk in chunks]
-    scores = await asyncio.to_thread(_get_model().predict, pairs)
+    scores = await asyncio.to_thread(score_chunks, queries, chunks)
 
     graded: list[Chunk] = []
     for chunk, score in zip(chunks, scores):

@@ -1,4 +1,5 @@
 import logging
+import re
 from typing import Any
 
 from langchain_core.prompts import ChatPromptTemplate, MessagesPlaceholder
@@ -10,6 +11,9 @@ from agent.state import AgentState
 
 log = logging.getLogger(__name__)
 
+# gpt-oss often cites as 【1】 or 【2†L9-L12】; the formatter, the UI and the eval read only [n]
+_WIDE_MARKER = re.compile(r"【(\d+)[^】]*】")
+
 _prompt = ChatPromptTemplate.from_messages([
     ("system", "{system_prompt}"),
     MessagesPlaceholder("history"),
@@ -17,7 +21,11 @@ _prompt = ChatPromptTemplate.from_messages([
      "Answer the question based on the information below. "
      "Always respond in English, regardless of the language of the question or context. "
      "Respond directly and confidently — do not say 'according to the context', "
-     "'the context states', or any similar phrase.\n\n"
+     "'the context states', or any similar phrase. "
+     "After each statement, cite the numbered source it comes from, e.g. [1] or [2][3]. "
+     "Only cite numbers that appear below. "
+     "Base every statement on the information below. If the information is about a different topic "
+     "than the question, say it does not cover the question instead of answering from general knowledge.\n\n"
      "Question: {question}\n\n"
      "Information:\n{context}"),
 ])
@@ -37,7 +45,7 @@ def make_reasoner(config: TopicConfig):
             question=state["question"],
             context=context,
         )
-        answer = answer.strip()
+        answer = _WIDE_MARKER.sub(r"[\1]", answer.strip())
         log.info("reason: answer (%d chars): %.120r", len(answer), answer)
         return {"answer": answer}
 

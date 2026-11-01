@@ -1,7 +1,10 @@
+import logging
 import re
 from typing import Any
 
 from agent.state import AgentState, Chunk
+
+log = logging.getLogger(__name__)
 
 
 def _build_citation(index: int, chunk: Chunk) -> str:
@@ -20,6 +23,7 @@ async def format_response(state: AgentState) -> dict[str, Any]:
             cited.append(idx)
 
     if not cited:
-        cited = list(range(min(len(chunks), 3)))
+        # No guessed sources: showing chunks the answer may not use is worse than showing none
+        log.warning("format: answer cites no sources (%d graded chunks)", len(chunks))
 
     return {"citations": [_build_citation(i, chunks[i]) for i in cited]}

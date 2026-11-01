@@ -6,9 +6,11 @@ from langchain_core.output_parsers import StrOutputParser
 from langchain_core.prompts import ChatPromptTemplate
 
 from agent.embed import embed_documents as _embed_documents
+from agent.embed import write_encoders
 from agent.nodes._llm import get_groq_llm
 from db.repository import DocumentRepository
 from ingestion.chunker import chunk_raw
+from ingestion.cleaner import strip_layout
 from ingestion.evaluator import evaluate_chunks
 from ingestion.scraper import RawChunk, scrape_single, scrape_site
 
@@ -22,21 +24,23 @@ _summary_prompt = ChatPromptTemplate.from_messages([
 
 
 async def _embed_and_store(repo: DocumentRepository, doc_id: str, chunks: list[RawChunk]) -> None:
+    encoders = write_encoders()  # dual-write: shadow encoders get vectors too, so a switch needs no re-crawl
     for start in range(0, len(chunks), _BATCH_SIZE):
         batch = chunks[start : start + _BATCH_SIZE]
         contents = [c.content for c in batch]
         metadatas = [{"document_id": doc_id, "chunk_index": start + i, **c.metadata} for i, c in enumerate(batch)]
-        embeddings = await asyncio.to_thread(_embed_documents, contents)
+        embeddings = {e.name: await asyncio.to_thread(_embed_documents, contents, e) for e in encoders}
         await repo.insert_chunks(doc_id, contents, metadatas, embeddings)
         log.info("Embedded batch %d–%d", start, start + len(batch) - 1)
 
 
 async def ingest_url(url: str, repo: DocumentRepository, crawler, mode: str = "crawl") -> tuple[str, int]:
-    raw = await (scrape_single(url, crawler) if mode == "single" else scrape_site(url, crawler))
+    raw = strip_layout(await (scrape_single(url, crawler) if mode == "single" else scrape_site(url, crawler)))
     if not raw:
         raise RuntimeError(f"No content scraped from {url!r}")
 
-    chunks = chunk_raw(raw, "markdown_headers", ["url", "source", "section"])
+    # Off the event loop: the chunker counts tokens with the embedder's tokenizer (and loads it on first use)
+    chunks = await asyncio.to_thread(chunk_raw, raw, "markdown_headers", ["url", "source", "section"])
     chunks = evaluate_chunks(chunks)
     if not chunks:
         raise RuntimeError("No usable chunks after evaluation")

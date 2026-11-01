@@ -17,7 +17,9 @@
 # Source
 !/agent/
 !/api/
+!/dashboard/
 !/db/
+!/evaluation/
 !/ingestion/
 !/migrations/
 !/services/
@@ -37,6 +39,7 @@ __pycache__/
 
 # Eval output
 /tests/eval/results.json
+/tests/eval/results/
 
 # OS
 .DS_Store

@@ -1,7 +1,6 @@
 import logging
 import time
 import uuid
-from urllib.parse import urlparse
 
 import structlog
 
@@ -10,8 +9,9 @@ from arq.jobs import Job, JobStatus
 from fastapi import APIRouter, Depends, HTTPException, Request
 from langchain_core.runnables import RunnableConfig
 
+from agent.graph import route_of
 from agent.state import AgentState
-from api.deps import get_arq_pool, get_graph, get_repo
+from api.deps import get_arq_pool, get_graph, get_query_log, get_repo
 from api.limiter import limiter
 from api.schemas import (
     AskRequest,
@@ -22,7 +22,8 @@ from api.schemas import (
     IngestJobStatus,
     IngestUrlRequest,
 )
-from db.repository import DocumentRepository, QueryLogEntry
+from db.query_log_repository import QueryLogEntry, QueryLogRepository
+from db.repository import DocumentRepository
 
 logger = logging.getLogger(__name__)
 router = APIRouter()
@@ -34,7 +35,7 @@ async def ask(
     request: Request,
     body: AskRequest,
     graph=Depends(get_graph),
-    repo: DocumentRepository = Depends(get_repo),
+    query_log: QueryLogRepository = Depends(get_query_log),
 ) -> AskResponse:
     run_id = uuid.uuid4()
     structlog.contextvars.clear_contextvars()
@@ -64,11 +65,12 @@ async def ask(
         raise HTTPException(status_code=500, detail="Internal server error") from exc
 
     latency_ms = int((time.monotonic() - t0) * 1000)
-    route = "clarify" if result["clarifying_questions"] else "reason"
-    domain = urlparse(result["citations"][0]).netloc if result["citations"] else None
+    route = route_of(result)
+    # Citations are formatted strings, not URLs; the chunk metadata holds the source netloc
+    domain = result["graded_chunks"][0].metadata.get("source") if result["graded_chunks"] else None
 
     try:
-        await repo.log_query(QueryLogEntry(
+        await query_log.log_query(QueryLogEntry(
             run_id=str(run_id),
             question=body.question,
             answer=result["answer"],
@@ -80,6 +82,7 @@ async def ask(
             graded_chunk_count=len(result["graded_chunks"]),
             retry_count=result["retry_count"],
             citations=result["citations"],
+            graded_chunk_ids=[c.id for c in result["graded_chunks"]],
         ))
     except Exception:
         logger.exception("Failed to write query_log for run_id=%s", run_id)

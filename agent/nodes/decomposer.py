@@ -4,18 +4,22 @@ from typing import Any
 from langchain_core.messages import AIMessage, BaseMessage, HumanMessage
 from langchain_core.prompts import ChatPromptTemplate, MessagesPlaceholder
 
-from agent.config import TopicConfig
-from agent.nodes._llm import invoke_chain
+from agent.nodes._llm import invoke_lines
 from agent.state import AgentState
 
 log = logging.getLogger(__name__)
 
+# No persona system prompt: its "out of scope" rule made the model write refusals as queries.
+# Scope is enforced by the reasoner and clarifier.
 _prompt = ChatPromptTemplate.from_messages([
-    ("system", "{system_prompt}"),
     MessagesPlaceholder("history"),
     ("human",
-     "Break the following question into 2-3 specific sub-questions that "
-     "together fully answer it. Return only the sub-questions, one per line.\n\n"
+     "Rewrite the question below as search queries for a document index. "
+     "If it asks about one thing, return 1 query; if it asks about several things, return 2-3, one per thing. "
+     "Each query must stand alone (resolve 'it', 'that' from the conversation). "
+     "Do not answer, refuse or ask the user anything: a query is never addressed to the user, "
+     "and whether the question is in scope is decided later. "
+     "Return only the queries, one per line.\n\n"
      "Question: {question}"),
 ])
 
@@ -25,18 +29,13 @@ def _history_messages(history: list[dict]) -> list[BaseMessage]:
     return [role_map[t["role"]](content=t["content"]) for t in history if t["role"] in role_map]
 
 
-def make_decomposer(config: TopicConfig):
-    async def decompose(state: AgentState) -> dict[str, Any]:
-        log.info("decompose: question=%r history_turns=%d", state["question"], len(state["history"]))
-        content = await invoke_chain(
-            _prompt,
-            system_prompt=config.system_prompt,
-            history=_history_messages(state["history"]),
-            question=state["question"],
-        )
-        lines = [line.strip() for line in content.strip().splitlines() if line.strip()]
-        sub_questions = lines or [state["question"]]
-        log.info("decompose: %d sub_questions: %s", len(sub_questions), sub_questions)
-        return {"sub_questions": sub_questions}
-
-    return decompose
+async def decompose(state: AgentState) -> dict[str, Any]:
+    log.info("decompose: question=%r history_turns=%d", state["question"], len(state["history"]))
+    lines = await invoke_lines(
+        _prompt,
+        history=_history_messages(state["history"]),
+        question=state["question"],
+    )
+    sub_questions = lines or [state["question"]]
+    log.info("decompose: %d sub_questions: %s", len(sub_questions), sub_questions)
+    return {"sub_questions": sub_questions}

@@ -1,6 +1,8 @@
+import asyncio
 import logging
 
-from agent.embed import embed_query as _embed_query
+from agent.embed import embed_queries as _embed_queries
+from agent.embed import get_encoder
 from agent.state import AgentState, Chunk
 from db.repository import DocumentRepository
 
@@ -18,16 +20,20 @@ def _rrf(scores: dict[str, float], ranked_ids: list[str]) -> None:
 
 def make_retriever(repo: DocumentRepository):
     async def retrieve(state: AgentState) -> dict:
-        queries = state["sub_questions"] or [state["question"]]
+        # Original question always included: sub-questions alone lose the user's own wording
+        queries = list(dict.fromkeys([state["question"], *state["sub_questions"]]))
         chunks: dict[str, Chunk] = {}
         rrf_scores: dict[str, float] = {}
 
         log.info("retrieve: retry_count=%d, %d queries: %s", state["retry_count"], len(queries), queries)
 
-        for i, query in enumerate(queries, start=1):
+        # One batch, off the event loop: encoding is CPU-bound and blocks every other request
+        encoder = get_encoder()
+        embeddings = await asyncio.to_thread(_embed_queries, queries, encoder)
+
+        for i, (query, query_embedding) in enumerate(zip(queries, embeddings), start=1):
             # Dense leg — pgvector cosine similarity
-            query_embedding = _embed_query(query)
-            dense_rows = await repo.similarity_search(query_embedding, _TOP_K)
+            dense_rows = await repo.similarity_search(query_embedding, _TOP_K, encoder.name)
             dense_ids: list[str] = []
             for row in dense_rows:
                 cid = row["id"]
