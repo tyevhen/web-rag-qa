@@ -23,7 +23,7 @@ from ragas.testset.transforms.extractors.llm_based import NERExtractor
 
 from agent.embed import embed_documents
 from db.client import create_pool
-from db.repository import DocumentRepository
+from db.repositories.documents import DocumentRepository
 from evaluation.judge import RUN_CONFIG, get_judge_embeddings, get_judge_llm
 from tests.eval.dataset import GOLDEN_PATH, GoldenRow, content_hash, load_golden, save_golden
 

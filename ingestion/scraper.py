@@ -54,7 +54,9 @@ async def _section_urls(url: str) -> list[str]:
     prefix = url.rstrip("/")
     async with httpx.AsyncClient(follow_redirects=True, timeout=30) as client:
         resp = await client.get(f"{prefix}/sitemap.xml")
-    own = [u for u in _LOC.findall(resp.text) if u.startswith(prefix)] if resp.status_code == 200 else []
+    own: list[str] = []
+    if resp.status_code == 200:
+        own = [u for u in _LOC.findall(resp.text) if u.startswith(prefix)]
     if own:
         log.info("Section sitemap %s/sitemap.xml returned %d URLs", prefix, len(own))
         return own

@@ -3,6 +3,10 @@ from typing import Literal
 from pydantic import BaseModel
 
 
+class HealthResponse(BaseModel):
+    status: str = "ok"
+
+
 class ConversationTurn(BaseModel):
     role: Literal["user", "assistant"]
     content: str

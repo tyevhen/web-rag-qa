@@ -3,7 +3,16 @@ import uuid
 import asyncpg
 from asyncpg import Pool
 
-from db.embedding_repository import encoder_literal
+from db.repositories.embeddings import encoder_literal
+
+
+def _embedding_rows(ids: list[uuid.UUID], embeddings: dict[str, list[list[float]]]) -> list[tuple]:
+    """One (chunk_id, encoder, vector) row per chunk for each encoder."""
+    rows = []
+    for encoder, vectors in embeddings.items():
+        for chunk_id, vector in zip(ids, vectors, strict=True):
+            rows.append((chunk_id, encoder, vector))
+    return rows
 
 
 class DocumentRepository:
@@ -37,11 +46,11 @@ class DocumentRepository:
             )
             await conn.executemany(
                 "INSERT INTO chunk_embeddings (chunk_id, encoder, embedding) VALUES ($1, $2, $3)",
-                [(i, encoder, v) for encoder, vectors in embeddings.items() for i, v in zip(ids, vectors)],
+                _embedding_rows(ids, embeddings),
             )
 
     async def similarity_search(self, embedding: list[float], k: int, encoder: str) -> list[asyncpg.Record]:
-        # Encoder and size inlined so the query matches that encoder's partial index (db/embedding_repository.py)
+        # Encoder and size inlined so the query matches that encoder's partial index (db/repositories/embeddings.py)
         vec = f"e.embedding::vector({len(embedding)})"
         return await self._pool.fetch(
             f"""
@@ -80,18 +89,6 @@ class DocumentRepository:
             ORDER BY d.uploaded_at DESC
             """
         )
-
-    async def list_sections(self) -> list[str]:
-        rows = await self._pool.fetch(
-            """
-            SELECT DISTINCT metadata->>'section' AS section
-            FROM chunks
-            WHERE metadata->>'section' IS NOT NULL
-              AND metadata->>'section' != ''
-            ORDER BY section
-            """
-        )
-        return [row["section"] for row in rows]
 
     async def sample_chunks(self, n: int) -> list[asyncpg.Record]:
         return await self._pool.fetch(

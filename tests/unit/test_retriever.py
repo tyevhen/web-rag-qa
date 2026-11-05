@@ -2,8 +2,8 @@ import threading
 from typing import cast
 
 from agent.nodes import retriever
-from agent.state import AgentState
-from db.repository import DocumentRepository
+from agent.state import AgentState, initial_state
+from db.repositories.documents import DocumentRepository
 
 
 class FakeRepo:
@@ -23,8 +23,7 @@ class FakeRepo:
 
 
 def _state(question: str, sub_questions: list[str]) -> AgentState:
-    return {"question": question, "history": [], "sub_questions": sub_questions, "retrieved_chunks": [],
-            "graded_chunks": [], "answer": "", "citations": [], "clarifying_questions": [], "retry_count": 0}
+    return initial_state(question, [], sub_questions)
 
 
 async def test_embeds_off_the_event_loop_once_per_unique_query(monkeypatch):

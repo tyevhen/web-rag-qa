@@ -5,11 +5,11 @@ from arq.connections import RedisSettings
 from crawl4ai import AsyncWebCrawler
 
 from db.client import create_pool
-from db.eval_repository import EvalRepository
-from db.query_log_repository import QueryLogRepository
-from db.repository import DocumentRepository
+from db.repositories.documents import DocumentRepository
+from db.repositories.evals import EvalRepository
+from db.repositories.query_log import QueryLogRepository
 from evaluation.online import score_recent
-from services.ingestion import ingest_url
+from ingestion.pipeline import ingest_url
 from settings import get_settings
 
 log = logging.getLogger(__name__)

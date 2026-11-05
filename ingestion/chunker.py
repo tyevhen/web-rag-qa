@@ -77,7 +77,8 @@ def _cap_size(chunk: RawChunk) -> list[RawChunk]:
     for para in (p.strip() for p in chunk.content.split("\n\n")):
         if not para:
             continue
-        for part in [para] if _fits(para) else _hard_split(para):
+        parts = [para] if _fits(para) else _hard_split(para)
+        for part in parts:
             if buf and not _fits(f"{buf}\n\n{part}"):
                 pieces.append(buf)
                 buf = part
@@ -100,4 +101,8 @@ def chunk_raw(
             result.extend(_markdown_headers(rc.content, filtered))
         else:
             result.extend(_section_aware(rc.content, filtered))
-    return [piece for c in result if c.content.strip() for piece in _cap_size(c)]
+    pieces: list[RawChunk] = []
+    for c in result:
+        if c.content.strip():
+            pieces.extend(_cap_size(c))
+    return pieces
