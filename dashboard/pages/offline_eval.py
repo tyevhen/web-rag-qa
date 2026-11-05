@@ -1,71 +1,41 @@
-import json
-
 import pandas as pd
 import streamlit as st
 
-from dashboard.data import load_result, result_files
-from dashboard.views import run_label
-from tests.eval.thresholds import THRESHOLDS_PATH, check_thresholds, lookup as lookup_any
+from dashboard.analysis.runs import BROKEN, broken, error_rate, threshold_rows, trend
+from dashboard.components.conversation import run_label
+from dashboard.data.results import load_runs, load_thresholds
+from tests.eval.thresholds import check_thresholds
 
-st.set_page_config(page_title="Offline eval", layout="wide")
 st.title("Offline evaluation")
 st.caption("Runs of `tests.eval.run_eval` over the golden set. Metrics are grouped by pipeline stage.")
 
-files = result_files()
-if not files:
+runs = load_runs()
+if not runs:
     st.info("No eval runs yet. Run `uv run python -m tests.eval.run_eval --skip-llm`.")
     st.stop()
 
-runs = [load_result(f) for f in files]
-thresholds: dict[str, dict[str, float]] = json.loads(THRESHOLDS_PATH.read_text())
-
-
-def lookup(report: dict, dotted: str) -> float | None:
-    value = lookup_any(report, dotted)
-    return value if isinstance(value, (int, float)) else None
-
-
-_BROKEN = 0.5  # runs where at least half the rows errored (e.g. rate limits) say nothing about quality
-
-
-def broken(report: dict) -> bool:
-    return (lookup(report, "deterministic.operational.error_rate") or 0.0) >= _BROKEN
-
+thresholds = load_thresholds()
 
 st.subheader("Trend across runs")
 valid = [r for r in runs if not broken(r)]
 if len(runs) > len(valid):
-    st.caption(f"{len(runs) - len(valid)} run(s) left out: at least {_BROKEN:.0%} of their rows errored.")
+    st.caption(f"{len(runs) - len(valid)} run(s) left out: at least {BROKEN:.0%} of their rows errored.")
 if len(valid) < 2:
     st.info("A trend needs at least 2 valid runs.")
 else:
-    trend = pd.DataFrame(
-        [{"run": r["meta"]["timestamp"], **{m.split(".", 1)[1]: lookup(r, m) for m in thresholds}} for r in reversed(valid)]
-    ).set_index("run")
-    st.line_chart(trend.dropna(axis=1, how="all"))
+    st.line_chart(trend(valid, thresholds).dropna(axis=1, how="all"))
 
 labels = [run_label(r) + (" · mostly errors" if broken(r) else "") for r in runs]
 default = next((i for i, r in enumerate(runs) if not broken(r)), 0)
 run = runs[st.selectbox("Run", range(len(runs)), index=default, format_func=lambda i: labels[i])]
 
 violations = check_thresholds(run)
-errors = lookup(run, "deterministic.operational.error_rate") or 0.0
 if broken(run):
-    st.error(f"{errors:.0%} of rows errored. The metrics below describe only the rows that ran.")
+    st.error(f"{error_rate(run):.0%} of rows errored. The metrics below describe only the rows that ran.")
 st.metric("Threshold violations", len(violations))
 
 st.subheader("Metrics vs thresholds")
-table = []
-for metric, bounds in thresholds.items():
-    value = lookup(run, metric)
-    ok = value is None or (value >= bounds.get("min", float("-inf")) and value <= bounds.get("max", float("inf")))
-    table.append({
-        "metric": metric,
-        "value": value,
-        "limit": f"min {bounds['min']}" if "min" in bounds else f"max {bounds['max']}",
-        "status": "not measured" if value is None else ("pass" if ok else "FAIL"),
-    })
-st.dataframe(pd.DataFrame(table), width="stretch", hide_index=True)
+st.dataframe(pd.DataFrame(threshold_rows(run, thresholds)), width="stretch", hide_index=True)
 
 left, right = st.columns(2)
 with left:

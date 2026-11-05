@@ -1,10 +1,10 @@
 import pandas as pd
 import streamlit as st
 
-from dashboard.data import load_eval_scores, load_query_log
+from dashboard.analysis.runs import production_stats
+from dashboard.data.traffic import load_eval_scores, load_query_log
 from evaluation.alerts import ALERT_THRESHOLDS
 
-st.set_page_config(page_title="Production", layout="wide")
 st.title("Production")
 st.caption("Live traffic from `query_log`, and nightly judge scores from `query_eval` (sampled by the worker cron).")
 
@@ -14,11 +14,8 @@ log = load_query_log(days)
 if log.empty:
     st.info("No /ask traffic in this window.")
 else:
-    c1, c2, c3, c4 = st.columns(4)
-    c1.metric("Requests", len(log))
-    c2.metric("Clarify rate", f"{(log['route'] == 'clarify').mean():.0%}")
-    c3.metric("Latency p50 / p95", f"{log['latency_ms'].quantile(0.5) / 1000:.1f}s / {log['latency_ms'].quantile(0.95) / 1000:.1f}s")
-    c4.metric("Retry rate", f"{(log['retry_count'] > 0).mean():.0%}")
+    for col, (name, value) in zip(st.columns(4), production_stats(log).items(), strict=True):
+        col.metric(name, value)
 
     log["day"] = pd.to_datetime(log["created_at"]).dt.date
     st.subheader("Requests per day by route")

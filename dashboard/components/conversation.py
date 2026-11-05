@@ -1,4 +1,4 @@
-"""Rendering shared by the eval pages."""
+"""Rendering shared by the eval and chat pages."""
 from typing import Any
 
 import streamlit as st
