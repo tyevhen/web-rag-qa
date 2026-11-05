@@ -20,10 +20,10 @@ from langchain_core.globals import set_llm_cache
 from agent.config import get_agent_config
 from agent.graph import build_graph
 from db.client import create_pool
-from db.embedding_repository import EmbeddingRepository
-from db.repository import DocumentRepository
+from db.repositories.documents import DocumentRepository
+from db.repositories.embeddings import EmbeddingRepository
+from embeddings.upkeep import check_ready
 from evaluation.judge import judge_model_name
-from services.encoders import check_ready
 from settings import get_settings
 from tests.eval import deterministic, ragas_metrics, report
 from tests.eval.dataset import GOLDEN_PATH, load_golden

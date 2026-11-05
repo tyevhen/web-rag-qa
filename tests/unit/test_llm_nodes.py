@@ -7,13 +7,11 @@ from langchain_core.messages import AIMessage, HumanMessage, SystemMessage
 from agent.config import TopicConfig
 from agent.nodes import _llm, reasoner
 from agent.nodes.augmenter import make_augmenter
-from agent.state import AgentState, Chunk
+from agent.state import AgentState, Chunk, initial_state
 
 
 def _state(**overrides: Any) -> AgentState:
-    state: AgentState = {"question": "q", "history": [], "sub_questions": [], "retrieved_chunks": [],
-                         "graded_chunks": [], "answer": "", "citations": [], "clarifying_questions": [], "retry_count": 0}
-    return cast(AgentState, {**state, **overrides})
+    return cast(AgentState, {**initial_state("q", []), **overrides})
 
 
 def test_parse_lines_strips_list_markers_and_blanks():

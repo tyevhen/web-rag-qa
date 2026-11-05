@@ -20,3 +20,9 @@ class AgentState(TypedDict):
     citations: list[str]
     clarifying_questions: list[str]
     retry_count: int
+
+
+def initial_state(question: str, history: list[dict], sub_questions: list[str] | None = None) -> AgentState:
+    """A fresh run: the only way callers (API, dashboard Chat, eval runner) start the graph."""
+    return {"question": question, "history": history, "sub_questions": sub_questions or [], "retrieved_chunks": [],
+            "graded_chunks": [], "answer": "", "citations": [], "clarifying_questions": [], "retry_count": 0}

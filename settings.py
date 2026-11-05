@@ -1,8 +1,11 @@
+import os
 from functools import lru_cache
 from typing import Literal
 
 from pydantic import SecretStr
 from pydantic_settings import BaseSettings, SettingsConfigDict
+
+GROQ_BASE_URL = "https://api.groq.com/openai/v1"
 
 
 class Settings(BaseSettings):
@@ -18,7 +21,7 @@ class Settings(BaseSettings):
     redis_url: str = "redis://localhost:6379"
     allowed_origins: str = "*"
     # OpenAI-compatible endpoint for the app LLM; point at https://router.huggingface.co/v1 to use HF
-    llm_base_url: str = "https://api.groq.com/openai/v1"
+    llm_base_url: str = GROQ_BASE_URL
     hf_token: SecretStr | None = None
     # Seconds per LLM attempt; a local 7B model on a laptop needs ~180 for the reasoner prompt
     llm_timeout: float = 30
@@ -37,6 +40,15 @@ class Settings(BaseSettings):
     langchain_tracing_v2: bool = False
     langchain_api_key: SecretStr | None = None
     langchain_project: str | None = None
+
+    def export_langsmith_env(self) -> None:
+        """LangChain reads tracing config from os.environ only, so copy it there; a no-op when tracing is off."""
+        if not self.langchain_tracing_v2 or self.langchain_api_key is None:
+            return
+        os.environ["LANGCHAIN_TRACING_V2"] = "true"
+        os.environ["LANGCHAIN_API_KEY"] = self.langchain_api_key.get_secret_value()
+        if self.langchain_project:
+            os.environ["LANGCHAIN_PROJECT"] = self.langchain_project
 
 
 @lru_cache

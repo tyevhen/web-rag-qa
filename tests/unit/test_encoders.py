@@ -3,10 +3,11 @@ from typing import cast
 import pytest
 
 from agent.embed import ENCODERS, get_encoder
-from db.embedding_repository import EmbeddingRepository, encoder_literal
-from db.repository import DocumentRepository
+from db.repositories.documents import DocumentRepository
+from db.repositories.embeddings import EmbeddingRepository, encoder_literal
+from embeddings import upkeep
+from ingestion import pipeline
 from ingestion.scraper import RawChunk
-from services import encoders, ingestion
 
 _BGE, _MINI = ENCODERS["BAAI/bge-small-en-v1.5"], ENCODERS["sentence-transformers/all-MiniLM-L6-v2"]
 
@@ -21,10 +22,10 @@ class FakeRepo:
 
 
 async def test_ingestion_writes_a_vector_per_chunk_for_every_encoder(monkeypatch):
-    monkeypatch.setattr(ingestion, "write_encoders", lambda: [_BGE, _MINI])
-    monkeypatch.setattr(ingestion, "_embed_documents", lambda texts, e: [[float(e.max_tokens)] for _ in texts])
+    monkeypatch.setattr(pipeline, "write_encoders", lambda: [_BGE, _MINI])
+    monkeypatch.setattr(pipeline, "_embed_documents", lambda texts, e: [[float(e.max_tokens)] for _ in texts])
     repo = FakeRepo()
-    await ingestion._embed_and_store(cast(DocumentRepository, repo), "doc", [RawChunk("a", {}), RawChunk("b", {})])
+    await pipeline._embed_and_store(cast(DocumentRepository, repo), "doc", [RawChunk("a", {}), RawChunk("b", {})])
 
     assert repo.inserted == [{_BGE.name: [[512.0], [512.0]], _MINI.name: [[256.0], [256.0]]}]
 
@@ -41,6 +42,6 @@ def test_encoder_name_cannot_inject_sql():
 
 
 async def test_drop_refuses_an_encoder_still_in_use(monkeypatch):
-    monkeypatch.setattr(encoders, "write_encoders", lambda: [_BGE])
+    monkeypatch.setattr(upkeep, "write_encoders", lambda: [_BGE])
     with pytest.raises(ValueError, match="still in use"):
-        await encoders.drop(cast(EmbeddingRepository, object()), _BGE.name)
+        await upkeep.drop(cast(EmbeddingRepository, object()), _BGE.name)

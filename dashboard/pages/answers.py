@@ -1,19 +1,16 @@
 import pandas as pd
 import streamlit as st
 
-from dashboard.data import load_result, result_files
-from dashboard.views import context_chunks, conversation, run_label
+from dashboard.components.conversation import context_chunks, conversation, run_label
+from dashboard.data.results import load_runs
 
-st.set_page_config(page_title="Answers", layout="wide")
 st.title("Answers")
 st.caption("Read what the pipeline answered on each golden question, with the conversation history and cited chunks.")
 
-files = result_files()
-if not files:
+runs = load_runs()
+if not runs:
     st.info("No eval runs yet. Run `uv run python -m tests.eval.run_eval --skip-llm`.")
     st.stop()
-
-runs = [load_result(f) for f in files]
 
 
 def label(i: int) -> str:

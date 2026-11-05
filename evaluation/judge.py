@@ -7,10 +7,10 @@ from ragas.embeddings import BaseRagasEmbeddings, LangchainEmbeddingsWrapper
 from ragas.llms import BaseRagasLLM, LangchainLLMWrapper
 
 from agent.embed import ENCODERS, embed_documents
-from settings import get_settings
+from settings import GROQ_BASE_URL, get_settings
 
 _BASE_URLS = {
-    "groq": "https://api.groq.com/openai/v1",
+    "groq": GROQ_BASE_URL,
     "hf": "https://router.huggingface.co/v1",
 }
 

@@ -4,7 +4,7 @@ import pytest
 from langgraph.graph.state import CompiledStateGraph
 
 from agent.state import Chunk
-from db.repository import DocumentRepository
+from db.repositories.documents import DocumentRepository
 from tests.eval import runner
 from tests.eval.dataset import GoldenRow, content_hash
 

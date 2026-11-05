@@ -120,7 +120,6 @@ Response fields: `answer`, `citations`, `sub_questions`, `clarifying_questions`,
 | `POST` | `/ingest/url` | Queue a crawl (`mode`: `crawl` = whole sitemap, `single` = one page) |
 | `GET` | `/ingest/jobs/{job_id}` | Ingestion job status and result |
 | `GET` | `/documents` | Ingested sources with chunk counts |
-| `GET` | `/topics` | Distinct section headings across ingested chunks |
 | `GET` | `/health` | Health check |
 
 ## Configuration
@@ -147,11 +146,11 @@ Set in `.env` (see `.env.example`):
 Vectors from different encoders are not comparable, so a query must be encoded by the same model as the passages it searches. Each chunk can hold one vector per encoder (`chunk_embeddings` table), which allows a switch without downtime or a re-crawl:
 
 1. Add the encoder to `ENCODERS` in `agent/embed.py` and to `SHADOW_EMBEDDERS`; deploy. New ingestions now write both.
-2. `uv run python -m services.encoders backfill <name>` — vectors for the older chunks, then its search index.
+2. `uv run python -m embeddings backfill <name>` — vectors for the older chunks, then its search index.
 3. Set `EMBEDDER=<name>` and restart. The API refuses to start if any chunk lacks a vector for it.
-4. Remove the old encoder from `SHADOW_EMBEDDERS`, then `uv run python -m services.encoders drop <old name>`.
+4. Remove the old encoder from `SHADOW_EMBEDDERS`, then `uv run python -m embeddings drop <old name>`.
 
-`uv run python -m services.encoders status` shows how many chunks each encoder covers. To compare two encoders on the same passages, backfill the second one and run the eval with `EMBEDDER=<name>` set for that run; the run records which encoder searched. Chunks are sized to the search encoder's window, so an encoder with a smaller window sees long chunks cut off.
+`uv run python -m embeddings status` shows how many chunks each encoder covers. To compare two encoders on the same passages, backfill the second one and run the eval with `EMBEDDER=<name>` set for that run; the run records which encoder searched. Chunks are sized to the search encoder's window, so an encoder with a smaller window sees long chunks cut off.
 
 ### Local LLM
 
@@ -190,8 +189,8 @@ uv run python tests/eval/run_eval.py
 agent/        LangGraph graph, state, embeddings, nodes
 api/          FastAPI app, routes, dependencies, schemas, logging
 db/           asyncpg pool, repositories (all SQL, one per table area), migration runner, schema snapshot
-ingestion/    crawler, chunker, chunk quality filter
-services/     ingestion orchestration
+embeddings/   per-encoder vector upkeep and its CLI (status, backfill, drop)
+ingestion/    crawler, chunker, chunk quality filter, ingestion pipeline
 worker/       arq background worker
 migrations/   numbered SQL migrations
 tests/        integration tests and eval harness

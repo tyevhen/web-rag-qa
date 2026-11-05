@@ -14,7 +14,8 @@ from agent.nodes.grader import grade
 from agent.nodes.reasoner import make_reasoner
 from agent.nodes.retriever import make_retriever
 from agent.state import AgentState
-from db.repository import DocumentRepository
+from db.repositories.documents import DocumentRepository
+from db.repositories.query_log import QueryLogEntry
 
 log = logging.getLogger(__name__)
 
@@ -44,6 +45,30 @@ def _after_grade(state: AgentState) -> str:
 def route_of(state: Mapping[str, Any]) -> str:
     """Which terminal node answered. Mirrors _after_grade: clarify runs only when nothing passed grading."""
     return "reason" if state["graded_chunks"] else "clarify"
+
+
+def log_entry(run_id: str, question: str, state: Mapping[str, Any], latency_ms: int,
+              chat_id: str | None = None, model: str | None = None) -> QueryLogEntry:
+    """The query_log row for a finished run; API and dashboard Chat both record runs through this."""
+    graded = state["graded_chunks"]
+    return QueryLogEntry(
+        run_id=run_id,
+        question=question,
+        answer=state["answer"],
+        # Citations are formatted strings, not URLs; the chunk metadata holds the source netloc
+        domain=graded[0].metadata.get("source") if graded else None,
+        latency_ms=latency_ms,
+        route=route_of(state),
+        sub_question_count=len(state["sub_questions"]),
+        retrieved_chunk_count=len(state["retrieved_chunks"]),
+        graded_chunk_count=len(graded),
+        retry_count=state["retry_count"],
+        citations=state["citations"],
+        graded_chunk_ids=[c.id for c in graded],
+        chat_id=chat_id,
+        model=model,
+        sub_questions=state["sub_questions"],
+    )
 
 
 def build_graph(config: TopicConfig, repo: DocumentRepository) -> CompiledStateGraph:

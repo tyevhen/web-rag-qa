@@ -10,8 +10,8 @@ from agent.embed import embed_query, get_encoder
 from agent.graph import route_of
 from agent.nodes.grader import grading_queries, score_chunks
 from agent.nodes.retriever import make_retriever
-from agent.state import AgentState, Chunk
-from db.repository import DocumentRepository
+from agent.state import AgentState, Chunk, initial_state
+from db.repositories.documents import DocumentRepository
 from tests.eval.dataset import GoldenRow, content_hash
 
 log = logging.getLogger(__name__)
@@ -36,17 +36,7 @@ class RunResult:
 
 
 def _initial_state(row: GoldenRow, sub_questions: list[str] | None = None) -> AgentState:
-    return {
-        "question": row.question,
-        "history": row.history,
-        "sub_questions": sub_questions or [],
-        "retrieved_chunks": [],
-        "graded_chunks": [],
-        "answer": "",
-        "citations": [],
-        "clarifying_questions": [],
-        "retry_count": 0,
-    }
+    return initial_state(row.question, row.history, sub_questions)
 
 
 async def _ablation(repo: DocumentRepository, row: GoldenRow) -> dict[str, list[str]]:

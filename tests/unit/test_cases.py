@@ -1,6 +1,6 @@
 from typing import Any
 
-from dashboard.cases import find_cases
+from dashboard.analysis.cases import find_cases
 from tests.eval.refusal import is_refusal
 
 

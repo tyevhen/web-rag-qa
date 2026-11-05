@@ -2,10 +2,10 @@ from typing import cast
 
 import asyncpg
 
+from db.repositories.documents import DocumentRepository
+from db.repositories.evals import EvalRepository
+from db.repositories.query_log import QueryLogRepository
 from evaluation import online
-from db.eval_repository import EvalRepository
-from db.query_log_repository import QueryLogRepository
-from db.repository import DocumentRepository
 
 
 class Documents:

@@ -1,11 +1,10 @@
 """Saved chats in the sidebar, most recently active first, one page at a time; clicking a chat opens it."""
 import uuid
+from typing import Any
 
 import streamlit as st
 
-from dashboard.data import load_chats
-
-_PAGE_SIZE = 10
+PAGE_SIZE = 10
 
 
 def _open(chat_id: str) -> None:
@@ -16,16 +15,15 @@ def _turn_page(step: int) -> None:
     st.session_state["chat_page"] += step
 
 
-def chat_sidebar(current: str) -> None:
-    """Clicks only set session state; Streamlit then reruns the page with the chosen chat."""
-    page = st.session_state.setdefault("chat_page", 0)
-    chats = load_chats(_PAGE_SIZE + 1, page * _PAGE_SIZE)  # the extra row only tells whether an older page exists
+def chat_sidebar(current: str, chats: list[dict[str, Any]], page: int) -> None:
+    """`chats` holds up to PAGE_SIZE + 1 rows: the extra one only tells whether an older page exists.
+    Clicks only set session state; Streamlit then reruns the page with the chosen chat."""
     with st.sidebar:
         st.button("New chat", icon=":material/add:", width="stretch", on_click=_open, args=(str(uuid.uuid4()),))
         st.subheader("Saved chats")
         if not chats:
             st.caption("No chats on this page yet. Ask a question to start one." if page == 0 else "No older chats.")
-        for c in chats[:_PAGE_SIZE]:
+        for c in chats[:PAGE_SIZE]:
             st.button(c["title"], key=f"chat-{c['chat_id']}", width="stretch", on_click=_open, args=(c["chat_id"],),
                       type="primary" if c["chat_id"] == current else "secondary")
             models = ", ".join(m.split("/")[-1] for m in c["models"] if m)
@@ -34,5 +32,5 @@ def chat_sidebar(current: str) -> None:
         newer, where, older = st.columns([1, 2, 1], vertical_alignment="center")
         newer.button(":material/chevron_left:", help="Newer chats", disabled=page == 0, on_click=_turn_page, args=(-1,))
         where.caption(f"Page {page + 1}", text_alignment="center")
-        older.button(":material/chevron_right:", help="Older chats", disabled=len(chats) <= _PAGE_SIZE,
+        older.button(":material/chevron_right:", help="Older chats", disabled=len(chats) <= PAGE_SIZE,
                      on_click=_turn_page, args=(1,))

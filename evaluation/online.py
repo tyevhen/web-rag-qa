@@ -4,12 +4,12 @@ import math
 import asyncpg
 from ragas import SingleTurnSample
 
-from db.eval_repository import EvalRepository
-from db.query_log_repository import QueryLogRepository
-from db.repository import DocumentRepository
+from db.repositories.documents import DocumentRepository
+from db.repositories.evals import EvalRepository
+from db.repositories.query_log import QueryLogRepository
 from evaluation.alerts import ALERT_THRESHOLDS
 from evaluation.judge import judge_model_name
-from evaluation.metrics import reference_free_metrics
+from evaluation.metrics import faithfulness_and_answer_relevancy
 
 log = logging.getLogger(__name__)
 
@@ -18,7 +18,7 @@ _WINDOW_DAYS = 7
 
 async def _score_sample(sample: SingleTurnSample) -> dict[str, float | None]:
     scores: dict[str, float | None] = {}
-    for metric in reference_free_metrics():
+    for metric in faithfulness_and_answer_relevancy():
         try:
             scores[metric.name] = float(await metric.single_turn_ascore(sample))
         except Exception:
@@ -39,7 +39,10 @@ async def score_row(documents: DocumentRepository, evals: EvalRepository, row: a
         retrieved_contexts=[c["content"] for c in chunks],
     )
     # A stored row marks the run as scored, so failed (None/NaN) metrics are left out to be retried next night
-    scores = {k: v for k, v in (await _score_sample(sample)).items() if v is not None and not math.isnan(v)}
+    scores: dict[str, float] = {}
+    for name, value in (await _score_sample(sample)).items():
+        if value is not None and not math.isnan(value):
+            scores[name] = value
     if scores:
         await evals.save_eval_scores(row["run_id"], scores, judge_model_name())
     return scores

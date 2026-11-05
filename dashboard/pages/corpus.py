@@ -2,14 +2,13 @@ import numpy as np
 import pandas as pd
 import streamlit as st
 
-from dashboard.data import load_chunks
-from dashboard.topics import boilerplate_phrases, cluster, label_clusters, project_2d
+from dashboard.analysis.topics import boilerplate_phrases
+from dashboard.data.corpus import load_chunks, load_topics
 
-st.set_page_config(page_title="Corpus", layout="wide")
 st.title("Corpus")
 st.caption("What is stored in the vector index. Topics come from clustering the chunk embeddings, with no LLM calls.")
 
-chunks, embeddings = load_chunks()
+chunks, _ = load_chunks()
 if chunks.empty:
     st.info("No chunks ingested yet. Use POST /ingest/url.")
     st.stop()
@@ -35,15 +34,7 @@ st.bar_chart(pd.Series(counts, index=[f"{int(a)}–{int(b)}" for a, b in zip(edg
 
 st.subheader("Topics")
 k = st.slider("Number of topics", min_value=4, max_value=30, value=12)
-
-
-@st.cache_data(ttl=60, show_spinner="Clustering…")
-def topics(k: int, n: int) -> tuple[list[int], dict[int, str], list[list[float]]]:
-    labels = cluster(embeddings, k)
-    return labels.tolist(), label_clusters(chunks["content"].tolist(), labels), project_2d(embeddings).tolist()
-
-
-labels, names, coords = topics(k, len(chunks))
+labels, names, coords = load_topics(k)
 chunks["topic"] = [names[label] for label in labels]
 summary = (
     chunks.pivot_table(index="topic", columns="source", values="id", aggfunc="count", fill_value=0)

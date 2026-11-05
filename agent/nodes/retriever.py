@@ -4,7 +4,7 @@ import logging
 from agent.embed import embed_queries as _embed_queries
 from agent.embed import get_encoder
 from agent.state import AgentState, Chunk
-from db.repository import DocumentRepository
+from db.repositories.documents import DocumentRepository
 
 log = logging.getLogger(__name__)
 

@@ -1,11 +1,12 @@
+from typing import Annotated
+
 from arq import ArqRedis
-from fastapi import HTTPException, Request, Security, status
+from fastapi import Depends, HTTPException, Request, Security, status
 from fastapi.security import APIKeyHeader
 from langgraph.graph.state import CompiledStateGraph
 
-from agent.config import TopicConfig
-from db.query_log_repository import QueryLogRepository
-from db.repository import DocumentRepository
+from db.repositories.documents import DocumentRepository
+from db.repositories.query_log import QueryLogRepository
 from settings import get_settings
 
 _api_key_header = APIKeyHeader(name="X-API-Key")
@@ -23,15 +24,18 @@ def get_graph(request: Request) -> CompiledStateGraph:
     return request.app.state.graph
 
 
-def get_topic_config(request: Request) -> TopicConfig:
-    return request.app.state.topic_config
-
-
 def get_arq_pool(request: Request) -> ArqRedis:
     return request.app.state.arq_pool
 
 
-def verify_api_key(key: str = Security(_api_key_header)) -> None:
+DocumentsDep = Annotated[DocumentRepository, Depends(get_repo)]
+QueryLogDep = Annotated[QueryLogRepository, Depends(get_query_log)]
+GraphDep = Annotated[CompiledStateGraph, Depends(get_graph)]
+ArqPoolDep = Annotated[ArqRedis, Depends(get_arq_pool)]
+ApiKey = Annotated[str, Security(_api_key_header)]
+
+
+def verify_api_key(key: ApiKey) -> None:
     expected = get_settings().ingest_api_key.get_secret_value()
     if key != expected:
         raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Invalid API key")

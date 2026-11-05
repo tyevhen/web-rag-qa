@@ -10,7 +10,7 @@ from ragas.metrics import LLMContextRecall
 from ragas.metrics.base import Metric
 
 from evaluation.judge import RUN_CONFIG, get_judge_llm
-from evaluation.metrics import correctness_metrics, reference_free_metrics, retrieval_metrics
+from evaluation.metrics import context_recall_and_precision, factual_correctness, faithfulness_and_answer_relevancy
 from tests.eval.runner import RunResult
 
 Scores = dict[str, list[float]]
@@ -44,7 +44,10 @@ def _run_all(results: list[RunResult]) -> tuple[dict[str, Scores], PerQuestion]:
     with_ref = [r for r in ok if r.row.reference and r.retrieved]
     answered = [r for r in ok if r.route == "reason" and r.graded]
     raw = {
-        "retrieval": _evaluate([_sample(r, [c.content for c in r.retrieved]) for r in with_ref], retrieval_metrics()),
+        "retrieval": _evaluate(
+            [_sample(r, [c.content for c in r.retrieved]) for r in with_ref],
+            context_recall_and_precision(),
+        ),
         # Same recall metric on the post-grader set; the difference = evidence the grader threw away
         "after_grading": _evaluate(
             [_sample(r, [c.content for c in r.graded]) for r in with_ref if r.graded],
@@ -52,11 +55,11 @@ def _run_all(results: list[RunResult]) -> tuple[dict[str, Scores], PerQuestion]:
         ),
         "generation": _evaluate(
             [_sample(r, [c.content for c in r.graded], with_response=True) for r in answered],
-            reference_free_metrics(),
+            faithfulness_and_answer_relevancy(),
         ),
         "correctness": _evaluate(
             [_sample(r, [c.content for c in r.graded], with_response=True) for r in answered if r.row.reference],
-            correctness_metrics(),
+            [factual_correctness()],
         ),
     }
     # Each group's scores are in the order of the results it was built from

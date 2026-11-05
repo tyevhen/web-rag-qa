@@ -8,7 +8,7 @@ from langchain_core.prompts import ChatPromptTemplate
 from agent.embed import embed_documents as _embed_documents
 from agent.embed import write_encoders
 from agent.nodes._llm import get_groq_llm
-from db.repository import DocumentRepository
+from db.repositories.documents import DocumentRepository
 from ingestion.chunker import chunk_raw
 from ingestion.cleaner import strip_layout
 from ingestion.evaluator import evaluate_chunks
@@ -28,8 +28,12 @@ async def _embed_and_store(repo: DocumentRepository, doc_id: str, chunks: list[R
     for start in range(0, len(chunks), _BATCH_SIZE):
         batch = chunks[start : start + _BATCH_SIZE]
         contents = [c.content for c in batch]
-        metadatas = [{"document_id": doc_id, "chunk_index": start + i, **c.metadata} for i, c in enumerate(batch)]
-        embeddings = {e.name: await asyncio.to_thread(_embed_documents, contents, e) for e in encoders}
+        metadatas = []
+        for i, c in enumerate(batch, start=start):
+            metadatas.append({"document_id": doc_id, "chunk_index": i, **c.metadata})
+        embeddings = {}
+        for e in encoders:
+            embeddings[e.name] = await asyncio.to_thread(_embed_documents, contents, e)
         await repo.insert_chunks(doc_id, contents, metadatas, embeddings)
         log.info("Embedded batch %d–%d", start, start + len(batch) - 1)
 
