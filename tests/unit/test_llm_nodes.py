@@ -3,6 +3,7 @@ from typing import Any, cast
 import pytest
 from langchain_core.language_models.fake_chat_models import FakeListChatModel
 from langchain_core.messages import AIMessage, HumanMessage, SystemMessage
+from langchain_core.runnables import RunnableLambda
 
 from agent.config import TopicConfig
 from agent.nodes import _llm, reasoner
@@ -30,7 +31,7 @@ def test_parse_lines_keeps_numbers_inside_text():
     ("only one line", ["a", "b"]),                                  # wrong count: originals only
 ])
 async def test_augmenter(monkeypatch, response: str, expected: list[str]):
-    monkeypatch.setattr(_llm, "get_groq_llm", lambda: FakeListChatModel(responses=[response]))
+    monkeypatch.setattr(_llm, "get_llm", lambda: FakeListChatModel(responses=[response]))
 
     result = await make_augmenter()(_state(sub_questions=["a", "b"]))
 
@@ -70,11 +71,12 @@ async def test_reasoner_rewrites_full_width_citations(monkeypatch):
     assert result == {"answer": "Warm it[1]. Do not rub[2]."}
 
 
-def test_use_model_overrides_llm_only_inside_block():
-    default = _llm.get_groq_llm()
+def test_run_config_picks_the_model_only_for_that_run(monkeypatch):
+    monkeypatch.setattr(_llm, "models", lambda: {"app-model": "http://app/v1", "other": "http://other/v1"})
+    monkeypatch.setattr(_llm.get_settings(), "llm_model", "app-model")
+    def pick(_: None) -> tuple[str, str | None]:
+        llm = _llm.get_llm()
+        return llm.model_name, llm.openai_api_base
 
-    with _llm.use_model("http://localhost:11434/v1", "web-rag-llm"):
-        local = _llm.get_groq_llm()
-
-    assert (local.model_name, local.openai_api_base) == ("web-rag-llm", "http://localhost:11434/v1")
-    assert _llm.get_groq_llm() is default
+    assert RunnableLambda(pick).invoke(None, config={"configurable": {"model": "other"}}) == ("other", "http://other/v1")
+    assert _llm.get_llm().model_name == "app-model"

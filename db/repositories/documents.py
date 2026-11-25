@@ -49,33 +49,59 @@ class DocumentRepository:
                 _embedding_rows(ids, embeddings),
             )
 
-    async def similarity_search(self, embedding: list[float], k: int, encoder: str) -> list[asyncpg.Record]:
+    async def similarity_search(self, embedding: list[float], k: int, encoder: str, lang: str) -> list[asyncpg.Record]:
         # Encoder and size inlined so the query matches that encoder's partial index (db/repositories/embeddings.py)
-        vec = f"e.embedding::vector({len(embedding)})"
+        # shortcut: with no stats on metadata->>'lang' the planner picks an exact scan (12 ms at 5.5k chunks)
+        # over HNSW; add an index on (metadata->>'lang') or extended stats if latency grows with the corpus
+        vec =f"e.embedding::vector({len(embedding)})"
         return await self._pool.fetch(
             f"""
             SELECT c.id::text, c.content, c.metadata, 1 - ({vec} <=> $1) AS score
             FROM chunk_embeddings e
             JOIN chunks c ON c.id = e.chunk_id
-            WHERE e.encoder = {encoder_literal(encoder)}
+            WHERE e.encoder = {encoder_literal(encoder)} AND c.metadata->>'lang' = $3
             ORDER BY {vec} <=> $1
             LIMIT $2
             """,
             embedding,
             k,
+            lang,
         )
 
-    async def fulltext_search(self, query: str, k: int) -> list[asyncpg.Record]:
+    async def fulltext_search(self, query: str, k: int, lang: str) -> list[asyncpg.Record]:
+        """BM25 (k1 1.2, b 0.75) over chunks matching any question term, terms made as for the chunks
+        (keyword_vector, migrations/011_keyword_bm25.sql). Terms with symbols (URLs, hyphenated) are left out
+        of the query so it is a valid tsquery; their word parts are terms of their own."""
+        # shortcut: chunk count and mean length are recomputed per query (a scan of the language's chunks);
+        # keep them in a table updated on ingest if keyword search gets slow as the corpus grows
         return await self._pool.fetch(
-            """
-            SELECT id::text, content, metadata
-            FROM chunks
-            WHERE to_tsvector('english', content) @@ plainto_tsquery('english', $1)
-            ORDER BY ts_rank(to_tsvector('english', content), plainto_tsquery('english', $1)) DESC
-            LIMIT $2
+            r"""
+            WITH q AS (
+                SELECT ARRAY(SELECT t FROM unnest(tsvector_to_array(keyword_vector($3, $1))) t WHERE t ~ '^\w+$') AS terms
+            ), m AS (
+                SELECT c.id, c.fts_len, t.lexeme, cardinality(t.positions) AS tf
+                FROM q, chunks c, unnest(c.fts) t
+                WHERE c.fts @@ array_to_string(q.terms, ' | ')::tsquery
+                  AND c.metadata->>'lang' = $3 AND t.lexeme = ANY(q.terms)
+            ), s AS (
+                SELECT count(*) AS n, avg(fts_len) AS avgdl FROM chunks WHERE metadata->>'lang' = $3
+            ), d AS (
+                SELECT lexeme, count(*) AS df FROM m GROUP BY lexeme
+            ), r AS (
+                SELECT m.id, sum(ln(1 + (s.n - d.df + 0.5) / (d.df + 0.5))
+                                 * m.tf * 2.2 / (m.tf + 1.2 * (0.25 + 0.75 * m.fts_len / s.avgdl))) AS score
+                FROM m JOIN d USING (lexeme) CROSS JOIN s
+                GROUP BY m.id
+                ORDER BY score DESC, m.id
+                LIMIT $2
+            )
+            SELECT c.id::text, c.content, c.metadata
+            FROM r JOIN chunks c USING (id)
+            ORDER BY r.score DESC, c.id
             """,
             query,
             k,
+            lang,
         )
 
     async def list_documents(self) -> list[asyncpg.Record]:

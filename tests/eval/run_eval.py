@@ -4,6 +4,7 @@
     uv run python -m tests.eval.run_eval --skip-llm   # deterministic only — free, CI-safe
     uv run python -m tests.eval.run_eval --limit 5    # smoke run
     uv run python -m tests.eval.run_eval --golden my.jsonl  # your own questions: {"question", "category"} per line
+    uv run python -m tests.eval.run_eval --no-cache   # call the LLM every time, so every call is timed
 
 Exits 1 when any metric violates tests/eval/thresholds.json.
 """
@@ -44,10 +45,11 @@ def _deterministic(results: list[RunResult]) -> dict[str, Any]:
     }
 
 
-async def main(skip_llm: bool, limit: int | None, golden: Path) -> int:
+async def main(skip_llm: bool, limit: int | None, golden: Path, cache: bool) -> int:
     rows = load_golden(golden)[:limit]
-    _LLM_CACHE.parent.mkdir(exist_ok=True)
-    set_llm_cache(SQLiteCache(database_path=str(_LLM_CACHE)))
+    if cache:  # cached answers come back instantly and untimed, so the serving numbers cover only uncached calls
+        _LLM_CACHE.parent.mkdir(exist_ok=True)
+        set_llm_cache(SQLiteCache(database_path=str(_LLM_CACHE)))
     pool = await create_pool()
     try:
         repo = DocumentRepository(pool)
@@ -57,7 +59,7 @@ async def main(skip_llm: bool, limit: int | None, golden: Path) -> int:
         await pool.close()
 
     full: dict[str, Any] = {
-        "meta": report.meta(len(rows), None if skip_llm else judge_model_name(), get_settings().groq_model,
+        "meta": report.meta(len(rows), None if skip_llm else judge_model_name(), get_settings().llm_model,
                             get_settings().embedder),
         "deterministic": _deterministic(results),
     }
@@ -78,5 +80,6 @@ if __name__ == "__main__":
     parser.add_argument("--skip-llm", action="store_true")
     parser.add_argument("--limit", type=int, default=None)
     parser.add_argument("--golden", type=Path, default=GOLDEN_PATH)
+    parser.add_argument("--no-cache", action="store_true")
     args = parser.parse_args()
-    sys.exit(asyncio.run(main(args.skip_llm, args.limit, args.golden)))
+    sys.exit(asyncio.run(main(args.skip_llm, args.limit, args.golden, not args.no_cache)))

@@ -2,7 +2,7 @@
 
     uv run python -m tests.eval.build_dataset [--size 10] [--sample 20]
 
-Kept deliberately cheap for the Groq free tier (~8k tokens/min): one NER call per chunk,
+Kept deliberately cheap for free hosted tiers (a few thousand tokens/min): one NER call per chunk,
 fixed personas, and one call per question. Single-hop questions only; add multi-hop ones by hand.
 
 Review the appended rows in golden.jsonl by hand: fix wrong references, delete nonsense rows.

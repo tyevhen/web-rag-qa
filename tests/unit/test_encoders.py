@@ -2,6 +2,7 @@ from typing import cast
 
 import pytest
 
+from agent import embed
 from agent.embed import ENCODERS, get_encoder
 from db.repositories.documents import DocumentRepository
 from db.repositories.embeddings import EmbeddingRepository, encoder_literal
@@ -45,3 +46,11 @@ async def test_drop_refuses_an_encoder_still_in_use(monkeypatch):
     monkeypatch.setattr(upkeep, "write_encoders", lambda: [_BGE])
     with pytest.raises(ValueError, match="still in use"):
         await upkeep.drop(cast(EmbeddingRepository, object()), _BGE.name)
+
+
+def test_documents_get_the_encoders_passage_prompt(monkeypatch):
+    seen: list[str | None] = []
+    monkeypatch.setattr(embed, "_encode", lambda texts, e, prompt: seen.append(prompt) or [])
+    embed.embed_documents(["a"], ENCODERS["intfloat/multilingual-e5-small"])
+    embed.embed_documents(["a"], _BGE)
+    assert seen == ["passage: ", None]

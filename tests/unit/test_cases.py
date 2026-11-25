@@ -45,3 +45,10 @@ def test_refusal_without_citation_is_not_a_citation_problem():
 def test_is_refusal_reads_hedged_refusals():
     assert is_refusal("The maximum daily dose of ibuprofen is not directly provided in the given information.")
     assert not is_refusal("Apply direct pressure for 10 minutes [1].")
+    assert not is_refusal("1. Pinch the nostrils.\n\nThis is not covered in the provided documents, but it is standard.")
+
+
+def test_is_refusal_reads_estonian_refusals():
+    assert is_refusal("Esitatud dokumendid ei sisalda teavet ibuprofeeni maksimaalse annuse kohta.")
+    assert is_refusal("Kahjuks teave selle kohta puudub.")
+    assert not is_refusal("Varju lähimasse siseruumi ja hoia akendest eemale [1].")

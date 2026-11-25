@@ -1,7 +1,7 @@
 import pandas as pd
 import streamlit as st
 
-from dashboard.analysis.runs import production_stats
+from dashboard.analysis.runs import production_stats, serving_by_day
 from dashboard.data.traffic import load_eval_scores, load_query_log
 from evaluation.alerts import ALERT_THRESHOLDS
 
@@ -14,15 +14,26 @@ log = load_query_log(days)
 if log.empty:
     st.info("No /ask traffic in this window.")
 else:
-    for col, (name, value) in zip(st.columns(4), production_stats(log).items(), strict=True):
+    stats = production_stats(log)
+    for col, (name, value) in zip(st.columns(len(stats)), stats.items(), strict=True):
         col.metric(name, value)
 
     log["day"] = pd.to_datetime(log["created_at"]).dt.date
     st.subheader("Requests per day by route")
     st.bar_chart(log.pivot_table(index="day", columns="route", values="question", aggfunc="count", fill_value=0))
     st.subheader("Latency per day (seconds)")
-    latency = pd.DataFrame(log.groupby("day")["latency_ms"].agg(p50=lambda s: s.quantile(0.5), p95=lambda s: s.quantile(0.95)))
+    ran = log[log["route"] != "rejected"]  # rejected requests never ran, latency 0
+    latency = pd.DataFrame(ran.groupby("day")["latency_ms"].agg(p50=lambda s: s.quantile(0.5), p95=lambda s: s.quantile(0.95)))
     st.line_chart(latency / 1000)
+    serving = serving_by_day(log)
+    st.subheader("Answer-writing call per day")
+    st.caption("Time to first token is mostly reading the prompt (prefill); time per token is decode speed. "
+               "A first call after Ollama loads the model shows a long wait.")
+    c1, c2 = st.columns(2)
+    c1.caption("Time to first token (seconds)")
+    c1.line_chart(serving[["ttft p50", "ttft p95"]])
+    c2.caption("Time per output token (ms)")
+    c2.line_chart(serving[["tpot p50"]])
 
 st.subheader("Answer quality (sampled, LLM-judged)")
 scores = load_eval_scores(days)

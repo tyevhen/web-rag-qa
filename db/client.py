@@ -18,4 +18,6 @@ async def create_pool() -> Pool:
         min_size=2,
         max_size=10,
         init=_init_conn,
+        # Retrieval filters by language after the HNSW scan; without this a 5%-language search returns ~1 row of k
+        server_settings={"hnsw.iterative_scan": "strict_order"},
     )

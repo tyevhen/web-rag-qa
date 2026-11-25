@@ -34,16 +34,16 @@ decompose → retrieve → grade ─┬─ ≥2 relevant chunks ─────�
 | `grade` | Cross-encoder (`ms-marco-MiniLM-L-6-v2`) scores each chunk against the question; chunks scoring below −1.0 are dropped |
 | `augment` | On retry, LLM rewrites sub-questions with broader domain vocabulary before retrieving again (max one retry) |
 | `reason` | LLM answers from the numbered graded chunks |
-| `format` | Attaches citations (URL, source, section) |
+| `format` | Lists the passages behind each `[n]` (section, source page, link to the passage) |
 | `clarify` | When nothing relevant is found, returns 2–3 "I want to know about…" intent options instead of an answer |
 
-The API is stateless: clients send prior turns in `history` with each request.
+The server keeps conversation history in the `messages` table: send the `conversation_id` from a response with the next question to continue that conversation (the last 10 turns are used). Answered and clarify turns are stored; blocked, timed-out and failed ones are not.
 
 Every `/ask` call gets a `run_id` that is bound to all log lines (structlog JSON), passed to LangSmith tracing when enabled, and written to the `query_log` table with latency, route, chunk counts and retry count.
 
 ## Stack
 
-Python 3.13 · FastAPI · LangGraph · LangChain · Groq (OpenAI-compatible API) · sentence-transformers · Postgres + pgvector · crawl4ai · arq + Redis · uv
+Python 3.13 · FastAPI · LangGraph · LangChain · Ollama (local, OpenAI-compatible API) · sentence-transformers · Postgres + pgvector · crawl4ai · arq + Redis · uv
 
 ## Getting started
 
@@ -51,18 +51,19 @@ Python 3.13 · FastAPI · LangGraph · LangChain · Groq (OpenAI-compatible API)
 
 - Python 3.13 and [uv](https://docs.astral.sh/uv/)
 - Docker (for local Postgres and Redis)
-- A [Groq](https://console.groq.com) API key
+- [Ollama](https://ollama.com) with the app model (see Local LLM)
+- For judged evals only: a key for an OpenAI-compatible endpoint with a free tier
 
 ### Setup
 
 ```bash
 uv sync --dev                 # create .venv and install dependencies
 uv run crawl4ai-setup         # install Playwright browsers used by crawl4ai
-cp .env.example .env          # then fill in GROQ_API_KEY and INGEST_API_KEY
+cp .env.example .env          # then fill in INGEST_API_KEY (and the EVAL_JUDGE_* lines for judged evals)
 docker compose up -d          # Postgres (pgvector) + Redis
 ```
 
-On first start, the Postgres container initialises its schema from `db/schema.sql`. For an existing database, apply migrations instead:
+The schema comes only from `migrations/`, on a fresh database too:
 
 ```bash
 uv run python -m db.migrate        # apply pending migrations
@@ -107,16 +108,31 @@ Use the archive.org `/download/` plain-text URLs, not `/stream/` pages: the latt
 ```bash
 curl -X POST localhost:8000/ask \
   -H "Content-Type: application/json" \
-  -d '{"question": "What should I keep in a 72-hour emergency kit?", "history": []}'
+  -d '{"question": "What should I keep in a 72-hour emergency kit?"}'
 ```
 
-Response fields: `answer`, `citations`, `sub_questions`, `clarifying_questions`, `run_id`.
+Response fields: `answer`, `citations`, `sub_questions`, `clarifying_questions`, `run_id`, `conversation_id`, `model`.
+
+The answer keeps plain `[n]` markers. Each citation is an object: `n`, `chunk_id`, `section`, `source_url` (the page, with a text fragment that scrolls to the passage in Chrome, Edge and Safari) and `url`, which opens the stored passage (`GET /chunks/{id}`: JSON, or a readable page in a browser).
+
+Pick a model with `"model"`: `GET /models` lists the app's model (the default) and the judge endpoint's. Each model keeps its own history in a conversation.
+
+Ask a follow-up in the same conversation by sending the returned `conversation_id`:
+
+```bash
+curl -X POST localhost:8000/ask \
+  -H "Content-Type: application/json" \
+  -d '{"question": "How long should each of those supplies last?", "conversation_id": "<conversation_id from the first response>"}'
+```
+
+Unknown fields such as the old `history` are rejected with 422.
 
 ## API
 
 | Method | Path | Description |
 |---|---|---|
 | `POST` | `/ask` | Ask a question (rate-limited to 10/min per IP) |
+| `POST` | `/ask/stream` | Same, as server-sent events: `meta`, the answer as `token`s (or `status: held` for sensitive questions), then `done` or `error` |
 | `POST` | `/ingest/url` | Queue a crawl (`mode`: `crawl` = whole sitemap, `single` = one page) |
 | `GET` | `/ingest/jobs/{job_id}` | Ingestion job status and result |
 | `GET` | `/documents` | Ingested sources with chunk counts |
@@ -128,18 +144,18 @@ Set in `.env` (see `.env.example`):
 
 | Variable | Required | Description |
 |---|---|---|
-| `GROQ_API_KEY` | yes | Groq API key |
 | `DATABASE_URL` | yes | Postgres connection string (append `?sslmode=require` for Neon/Supabase) |
-| `GROQ_MODEL` | yes | Groq model id, e.g. `openai/gpt-oss-120b` |
+| `LLM_MODEL` | yes | Model id at `LLM_BASE_URL`, e.g. `web-rag-llm` on Ollama |
 | `SYSTEM_PROMPT` | yes | Assistant persona and scope |
 | `INGEST_API_KEY` | yes | Key for the ingestion API-key check (`api/deps.py::verify_api_key`) |
 | `REDIS_URL` | no | Default `redis://localhost:6379` |
 | `ALLOWED_ORIGINS` | no | Comma-separated CORS origins, default `*` |
 | `LANGCHAIN_TRACING_V2`, `LANGCHAIN_API_KEY`, `LANGCHAIN_PROJECT` | no | LangSmith tracing |
-| `LLM_BASE_URL` | no | OpenAI-compatible endpoint, default Groq |
-| `LLM_TIMEOUT` | no | Seconds per LLM attempt, default 30 |
+| `LLM_BASE_URL`, `LLM_API_KEY` | no | OpenAI-compatible endpoint, default local Ollama (no key) |
+| `LLM_TIMEOUT`, `REQUEST_TIMEOUT` | no | Seconds per LLM attempt (default 180) and per /ask run (default 600) |
+| `EVAL_JUDGE_BASE_URL`, `EVAL_JUDGE_API_KEY`, `EVAL_JUDGE_MODEL` | no | The judge for evals and nightly scoring: any OpenAI-compatible endpoint, a different model from `LLM_MODEL` |
 | `EMBEDDER` | no | Encoder search uses (`agent/embed.py` `ENCODERS`), default `BAAI/bge-small-en-v1.5` |
-| `SHADOW_EMBEDDERS` | no | JSON list of extra encoders ingestion also writes, e.g. `'["sentence-transformers/all-MiniLM-L6-v2"]'` |
+| `SHADOW_EMBEDDERS` | no | JSON list of extra encoders ingestion also writes, e.g. `'["intfloat/multilingual-e5-small"]'` |
 
 ### Switching encoders
 
@@ -150,20 +166,20 @@ Vectors from different encoders are not comparable, so a query must be encoded b
 3. Set `EMBEDDER=<name>` and restart. The API refuses to start if any chunk lacks a vector for it.
 4. Remove the old encoder from `SHADOW_EMBEDDERS`, then `uv run python -m embeddings drop <old name>`.
 
-`uv run python -m embeddings status` shows how many chunks each encoder covers. To compare two encoders on the same passages, backfill the second one and run the eval with `EMBEDDER=<name>` set for that run; the run records which encoder searched. Chunks are sized to the search encoder's window, so an encoder with a smaller window sees long chunks cut off.
+`uv run python -m embeddings status` shows how many chunks each encoder covers. To compare two encoders on the same passages, backfill the second one and run the eval with `EMBEDDER=<name>` set for that run; the run records which encoder searched. Chunks are sized with a fixed tokenizer (bge-small, 512 tokens), whatever the search encoder, so an encoder with a smaller window sees long chunks cut off.
 
 ### Local LLM
 
-The app can generate answers with a local open-weights model through [Ollama](https://ollama.com), which serves the same OpenAI-compatible API. On macOS run it natively: Docker on a Mac cannot use the GPU.
+The app generates answers with a local open-weights model through [Ollama](https://ollama.com), which serves the same OpenAI-compatible API. On macOS run it natively: Docker on a Mac cannot use the GPU.
 
 ```bash
 brew install ollama && brew services start ollama   # background service on :11434, starts at login
 ollama create web-rag-llm -f llm/Modelfile           # pulls the base model (~4.7 GB) and pins the context size
 ```
 
-Then set `LLM_BASE_URL=http://localhost:11434/v1`, `GROQ_MODEL=web-rag-llm` and `LLM_TIMEOUT=180` in `.env`. `GROQ_API_KEY` stays required because the eval judge still runs on Groq. To change the model, edit `FROM` in `llm/Modelfile` and run `ollama create` again. Remove the three lines to switch back to Groq.
+`LLM_MODEL=web-rag-llm` in `.env` is all it needs. To change the model, edit `FROM` in `llm/Modelfile` and run `ollama create` again. Any other OpenAI-compatible endpoint works through `LLM_BASE_URL` and `LLM_API_KEY`.
 
-Expect answers in tens of seconds on an M1 laptop, against a few seconds on Groq. The service log is `$(brew --prefix)/var/log/ollama.log`; a "truncating input prompt" line there means `num_ctx` is too small.
+Expect answers in tens of seconds on an M1 laptop. The service log is `$(brew --prefix)/var/log/ollama.log`; a "truncating input prompt" line there means `num_ctx` is too small.
 
 ## Testing
 
@@ -173,7 +189,7 @@ Integration tests run against a live API with content already ingested:
 uv run pytest tests/ -v
 ```
 
-LLM-as-judge evaluation (scores relevance, groundedness and completeness 1–5; uses Groq credits):
+LLM-as-judge evaluation (the judge at `EVAL_JUDGE_BASE_URL`; a free tier's token limits apply):
 
 ```bash
 uv run python tests/eval/run_eval.py

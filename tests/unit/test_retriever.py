@@ -11,14 +11,17 @@ class FakeRepo:
 
     def __init__(self, dense: list[str], sparse: list[str]) -> None:
         self.dense, self.sparse = dense, sparse
+        self.langs: list[str] = []
 
     def as_repo(self) -> DocumentRepository:
         return cast(DocumentRepository, self)
 
-    async def similarity_search(self, embedding: list[float], k: int, encoder: str) -> list[dict]:
+    async def similarity_search(self, embedding: list[float], k: int, encoder: str, lang: str) -> list[dict]:
+        self.langs.append(lang)
         return [{"id": i, "content": i, "metadata": {}} for i in self.dense[:k]]
 
-    async def fulltext_search(self, query: str, k: int) -> list[dict]:
+    async def fulltext_search(self, query: str, k: int, lang: str) -> list[dict]:
+        self.langs.append(lang)
         return [{"id": i, "content": i, "metadata": {}} for i in self.sparse[:k]]
 
 
@@ -47,3 +50,12 @@ async def test_rrf_ranks_chunks_found_by_both_legs_first(monkeypatch):
     ids = [c.id for c in out["retrieved_chunks"]]
     assert ids[0] == "c"  # rank 3 dense + rank 1 sparse beats rank 1 in one leg only
     assert set(ids) == {"a", "b", "c", "d"}
+
+
+async def test_searches_only_the_questions_language(monkeypatch):
+    monkeypatch.setattr(retriever, "_embed_queries", lambda texts, encoder: [[0.0] for _ in texts])
+    for question, lang in [("Kuidas valmistuda pikaks elektrikatkestuseks kodus?", "et"),
+                           ("How do I prepare for a long power outage at home?", "en")]:
+        repo = FakeRepo(["a"], ["b"])
+        await retriever.make_retriever(repo.as_repo())(_state(question, []))
+        assert set(repo.langs) == {lang}

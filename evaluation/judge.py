@@ -1,52 +1,54 @@
 from functools import lru_cache
+from urllib.parse import urlparse
 
 from langchain_core.embeddings import Embeddings
+from langchain_core.rate_limiters import InMemoryRateLimiter
 from langchain_openai import ChatOpenAI
 from ragas import RunConfig
 from ragas.embeddings import BaseRagasEmbeddings, LangchainEmbeddingsWrapper
 from ragas.llms import BaseRagasLLM, LangchainLLMWrapper
 
 from agent.embed import ENCODERS, embed_documents
-from settings import GROQ_BASE_URL, get_settings
+from settings import get_settings
 
-_BASE_URLS = {
-    "groq": GROQ_BASE_URL,
-    "hf": "https://router.huggingface.co/v1",
-}
-
-# Sequential + patient retries: Groq free tier allows ~8k tokens/min, and 429s surface as NaN scores
+# Sequential + patient retries: free hosted tiers allow a few thousand tokens/min, and 429s surface as NaN scores
 RUN_CONFIG = RunConfig(max_workers=1, max_retries=10, max_wait=60, timeout=180)
+# 4 calls/min, no bursts: at ~1.5k tokens per judge call that stays under an 8k tokens/min limit,
+# so retries are for the rare large call, not the normal pace
+_PACE = InMemoryRateLimiter(requests_per_second=4 / 60, max_bucket_size=1)
 
 
-_JUDGE_ENCODER = ENCODERS["BAAI/bge-small-en-v1.5"]
+# Multilingual, so Estonian answers are scored as fairly as English ones; scores before this switch are not comparable
+_JUDGE_ENCODER = ENCODERS["intfloat/multilingual-e5-small"]
 
 
 class LocalEmbeddings(Embeddings):
-    """LangChain adapter over the app's own bge-small embedder — local, no API cost."""
+    """LangChain adapter over the app's own e5 embedder — local, no API cost."""
 
     def embed_documents(self, texts: list[str]) -> list[list[float]]:
         # Pinned, not Settings.embedder: comparing search encoders must not change how the judge scores
         return embed_documents(texts, _JUDGE_ENCODER)
 
     def embed_query(self, text: str) -> list[float]:
-        # No query prefix: answer_relevancy compares question to question, so both sides must embed alike
+        # Same prefix as documents: answer_relevancy compares question to question, so both sides must embed alike
         return embed_documents([text], _JUDGE_ENCODER)[0]
 
 
 def judge_model_name() -> str:
     s = get_settings()
-    return f"{s.eval_judge_provider}:{s.eval_judge_model}"
+    return f"{urlparse(s.eval_judge_base_url or '').hostname or 'unset'}:{s.eval_judge_model}"
 
 
 @lru_cache(maxsize=1)
 def get_judge_chat() -> ChatOpenAI:
     s = get_settings()
-    if s.eval_judge_provider == "hf" and s.hf_token is None:
-        raise ValueError("EVAL_JUDGE_PROVIDER=hf requires HF_TOKEN")
+    if s.eval_judge_base_url is None or s.eval_judge_api_key is None:
+        raise ValueError("The judge needs EVAL_JUDGE_BASE_URL and EVAL_JUDGE_API_KEY")
     return ChatOpenAI(
         model=s.eval_judge_model,
-        api_key=s.hf_token if s.eval_judge_provider == "hf" else s.groq_api_key,
-        base_url=_BASE_URLS[s.eval_judge_provider],
+        api_key=s.eval_judge_api_key,
+        base_url=s.eval_judge_base_url,
+        rate_limiter=_PACE,
         temperature=0,
         # gpt-oss is a reasoning model: default effort burns ~4x the tokens and can hit the length limit
         # mid-thought (ragas LLMDidNotFinishException). Judging/extraction needs little reasoning.
@@ -58,7 +60,7 @@ def get_judge_chat() -> ChatOpenAI:
 
 @lru_cache(maxsize=1)
 def get_judge_llm() -> BaseRagasLLM:
-    # bypass_n: Groq rejects n>1, so multi-sample metrics (ResponseRelevancy) issue separate calls
+    # bypass_n: some providers reject n>1, so multi-sample metrics (ResponseRelevancy) issue separate calls
     return LangchainLLMWrapper(get_judge_chat(), run_config=RUN_CONFIG, bypass_n=True)
 
 

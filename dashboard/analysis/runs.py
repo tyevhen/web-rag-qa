@@ -81,11 +81,40 @@ def judge_summary(paired: list[tuple[dict, dict]]) -> list[dict[str, Any]]:
 
 
 def production_stats(log: pd.DataFrame) -> dict[str, str]:
-    """Headline numbers for a non-empty query_log frame."""
-    latency = log["latency_ms"] / 1000
+    """Headline numbers for a non-empty query_log frame; latency and retries leave out rejected requests (never run)."""
+    ran = log["route"] != "rejected"
+    latency = log.loc[ran, "latency_ms"] / 1000
+    streamed = log[log["streamed"]]
     return {
         "Requests": str(len(log)),
         "Clarify rate": f"{(log['route'] == 'clarify').mean():.0%}",
         "Latency p50 / p95": f"{latency.quantile(0.5):.1f}s / {latency.quantile(0.95):.1f}s",
-        "Retry rate": f"{(log['retry_count'] > 0).mean():.0%}",
+        "Retry rate": f"{(log.loc[ran, 'retry_count'] > 0).mean():.0%}",
+        # Streamed answers the output check flagged afterwards: the user saw them, nothing was retracted
+        "Streamed, then flagged": f"{(streamed['route'] == 'blocked_output').mean():.0%}" if len(streamed) else "n/a",
     }
+
+
+def reason_call(calls: list[dict[str, Any]] | None) -> dict[str, Any] | None:
+    """The call that wrote the answer (the last reason call); None for runs that never reached it."""
+    return next((c for c in reversed(calls or []) if c["node"] == "reason"), None)
+
+
+def serving_by_day(log: pd.DataFrame) -> pd.DataFrame:
+    """Per day, over the reason calls: time to first token p50/p95 (seconds) and time per output token p50 (ms)."""
+    rows = [{"day": day, "ttft_s": c["ttft_ms"] / 1000, "tpot_ms": c["tpot_ms"]}
+            for day, calls in zip(log["day"], log["llm_calls"]) if (c := reason_call(calls))]
+    if not rows:
+        return pd.DataFrame(columns=["ttft p50", "ttft p95", "tpot p50"])
+    days = pd.DataFrame(rows).groupby("day")
+    return pd.DataFrame({"ttft p50": days["ttft_s"].quantile(0.5), "ttft p95": days["ttft_s"].quantile(0.95),
+                         "tpot p50": days["tpot_ms"].median()})
+
+
+def serving_line(calls: list[dict[str, Any]] | None) -> str:
+    """One answer's serving numbers: when its first token came (from the start of the run), decode speed, prompt size."""
+    c = reason_call(calls)
+    if c is None:
+        return ""
+    tpot = f" · {c['tpot_ms']:.0f} ms/token" if c["tpot_ms"] is not None else ""
+    return f"first answer token at {(c['start_ms'] + c['ttft_ms']) / 1000:.1f} s{tpot} · prompt {c['prompt_tokens']} tokens"

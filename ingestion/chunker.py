@@ -1,15 +1,18 @@
 from typing import Any
 
-from agent.embed import count_tokens, get_encoder
+from agent.embed import ENCODERS, count_tokens
 from ingestion.scraper import RawChunk
 
 # Keeps reasoner prompts small; the token cap below is what keeps the embedder from cutting chunks off
 _MAX_CHARS = 1500
+# Fixed, not the search encoder: switching encoders must not change chunk boundaries
+_CHUNK_ENCODER = ENCODERS["BAAI/bge-small-en-v1.5"]
+_MAX_TOKENS = 512
 
 
 def _fits(text: str) -> bool:
-    # The search encoder's window; shadow encoders with a smaller one see these chunks cut off
-    return len(text) <= _MAX_CHARS and count_tokens(text) <= get_encoder().max_tokens
+    # Encoders with a smaller window see these chunks cut off
+    return len(text) <= _MAX_CHARS and count_tokens(text, _CHUNK_ENCODER) <= _MAX_TOKENS
 
 
 def _section_aware(text: str, meta: dict[str, Any]) -> list[RawChunk]:
@@ -55,7 +58,7 @@ def _hard_split(text: str) -> list[str]:
     parts: list[str] = []
     buf = ""
     # A WordPiece token covers at least one char, so a word slice this long always fits the window
-    step = get_encoder().max_tokens - 12
+    step = _MAX_TOKENS - 12
     words = [w[i : i + step] for w in text.split() for i in range(0, len(w), step)]
     for word in words:
         if buf and not _fits(f"{buf} {word}"):

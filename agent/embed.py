@@ -11,12 +11,14 @@ class Encoder:
     name: str  # sentence-transformers id; also the label stored with each vector in chunk_embeddings
     dims: int
     max_tokens: int  # the window, [CLS] and [SEP] included; longer text is cut off
-    query_prompt: str | None = None  # put before short queries that search longer passages; passages get none
+    query_prompt: str | None = None  # put before short queries that search longer passages
+    doc_prompt: str | None = None  # put before passages, for encoders trained with one (e5: "passage: ")
 
 
 ENCODERS = {e.name: e for e in (
     Encoder("BAAI/bge-small-en-v1.5", 384, 512, "Represent this sentence for searching relevant passages: "),
     Encoder("sentence-transformers/all-MiniLM-L6-v2", 384, 256),
+    Encoder("intfloat/multilingual-e5-small", 384, 512, "query: ", doc_prompt="passage: "),
 )}
 
 
@@ -36,7 +38,7 @@ def write_encoders() -> list[Encoder]:
 
 @lru_cache
 def _model(name: str) -> SentenceTransformer:
-    return SentenceTransformer(name)
+    return SentenceTransformer(name, device="cpu")  # small model; MPS caches GPU buffers and never frees them
 
 
 def _encode(texts: list[str], encoder: Encoder, prompt: str | None) -> list[list[float]]:
@@ -58,4 +60,5 @@ def embed_query(text: str, encoder: Encoder | None = None) -> list[float]:
 
 
 def embed_documents(texts: list[str], encoder: Encoder | None = None) -> list[list[float]]:
-    return _encode(texts, encoder or get_encoder(), None)
+    encoder = encoder or get_encoder()
+    return _encode(texts, encoder, encoder.doc_prompt)
