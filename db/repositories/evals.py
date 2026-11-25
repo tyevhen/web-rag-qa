@@ -25,7 +25,6 @@ class EvalRepository:
             FROM query_eval e
             JOIN query_log q ON q.run_id = e.run_id
             WHERE e.evaluated_at > now() - make_interval(days => $1) AND e.score IS NOT NULL
-              AND q.chat_id IS NULL
             GROUP BY e.metric
             """,
             days,
@@ -38,7 +37,7 @@ class EvalRepository:
             SELECT e.evaluated_at, e.metric, e.score, e.judge_model, q.question, q.answer
             FROM query_eval e
             JOIN query_log q ON q.run_id = e.run_id
-            WHERE e.evaluated_at > now() - make_interval(days => $1) AND q.chat_id IS NULL
+            WHERE e.evaluated_at > now() - make_interval(days => $1)
             ORDER BY e.evaluated_at
             """,
             days,

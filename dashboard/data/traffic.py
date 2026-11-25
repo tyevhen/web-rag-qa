@@ -10,7 +10,7 @@ from db.repositories.query_log import QueryLogRepository
 @st.cache_data(ttl=60)
 def load_query_log(days: int) -> pd.DataFrame:
     columns = ["created_at", "question", "route", "latency_ms", "retry_count",
-               "retrieved_chunk_count", "graded_chunk_count"]
+               "retrieved_chunk_count", "graded_chunk_count", "llm_calls", "streamed"]
     return frame(run(lambda pool: QueryLogRepository(pool).query_log_since(days)), columns)
 
 

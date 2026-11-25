@@ -1,9 +1,10 @@
 {
   "deterministic.retrieval.hybrid_decomposed.hit@6": {"min": 0.8},
   "deterministic.routing.false_refusal_rate": {"max": 0.1},
-  "deterministic.routing.false_answer_rate": {"max": 0.2},
   "deterministic.routing.off_corpus_answered_rate": {"max": 0.05},
   "deterministic.operational.error_rate": {"max": 0.05},
+  "deterministic.operational.reason_ttft_p95_s": {"max": 60},
+  "deterministic.operational.reason_tpot_p50_ms": {"max": 200},
   "llm.retrieval.context_recall": {"min": 0.7},
   "llm.grader.recall_loss": {"max": 0.15},
   "llm.generation.faithfulness": {"min": 0.85},

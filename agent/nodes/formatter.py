@@ -1,20 +1,44 @@
 import logging
 import re
 from typing import Any
+from urllib.parse import quote
 
+from agent.nodes.screen import check, refuse
 from agent.state import AgentState, Chunk
 
 log = logging.getLogger(__name__)
 
+_LINE_MARKER = re.compile(r"^\s*(?:[#>*-]+|\d+[.)])\s+")  # heading, quote and list markers aren't text on the page
+_MARKUP = re.compile(r"[*_`\[\]()<>|#]")
+_FRAGMENT_WORDS = 6
 
-def _build_citation(index: int, chunk: Chunk) -> str:
-    parts = [f"[{index + 1}]"] + [f"{k}: {v}" for k, v in chunk.metadata.items()]
-    return " | ".join(parts)
+
+def text_fragment(content: str) -> str:
+    """`#:~:text=` with the passage's first words, so browsers that support text fragments scroll to it.
+    Words stop at the first one with markdown in it (the page shows it rendered); fewer than 3 is too vague."""
+    words = _LINE_MARKER.sub("", content.split("\n", 1)[0]).split()
+    plain: list[str] = []
+    for word in words[:_FRAGMENT_WORDS]:
+        if _MARKUP.search(word):
+            break
+        plain.append(word)
+    if len(plain) < 3:
+        return ""
+    return "#:~:text=" + quote(" ".join(plain), safe="").replace("-", "%2D")  # "-" and "," are fragment syntax
+
+
+def _build_citation(index: int, chunk: Chunk) -> dict[str, Any]:
+    """The API adds `url`, the passage at GET /chunks/{chunk_id}; the answer keeps its plain [n] markers."""
+    meta = chunk.metadata
+    return {"n": index + 1, "chunk_id": chunk.id, "section": meta.get("section", ""),
+            "source_url": meta.get("url", "") + text_fragment(chunk.content)}
 
 
 async def format_response(state: AgentState) -> dict[str, Any]:
     chunks = state["graded_chunks"]
     answer = state["answer"]
+    if answer and (category := await check(answer)):
+        return refuse(f"output check on reason: REFUSE {category}", state["lang"])
 
     cited: list[int] = []
     for match in re.finditer(r"\[(\d+)\]", answer):

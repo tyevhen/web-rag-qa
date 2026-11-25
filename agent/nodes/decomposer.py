@@ -4,7 +4,7 @@ from typing import Any
 from langchain_core.messages import AIMessage, BaseMessage, HumanMessage
 from langchain_core.prompts import ChatPromptTemplate, MessagesPlaceholder
 
-from agent.nodes._llm import invoke_lines
+from agent.nodes._llm import cap_queries, invoke_lines
 from agent.state import AgentState
 
 log = logging.getLogger(__name__)
@@ -19,6 +19,7 @@ _prompt = ChatPromptTemplate.from_messages([
      "Each query must stand alone (resolve 'it', 'that' from the conversation). "
      "Do not answer, refuse or ask the user anything: a query is never addressed to the user, "
      "and whether the question is in scope is decided later. "
+     "Write the queries in the same language as the question; never translate it. "
      "Return only the queries, one per line.\n\n"
      "Question: {question}"),
 ])
@@ -33,9 +34,10 @@ async def decompose(state: AgentState) -> dict[str, Any]:
     log.info("decompose: question=%r history_turns=%d", state["question"], len(state["history"]))
     lines = await invoke_lines(
         _prompt,
+        max_tokens=200,
         history=_history_messages(state["history"]),
         question=state["question"],
     )
-    sub_questions = lines or [state["question"]]
+    sub_questions = cap_queries(lines or [state["question"]])
     log.info("decompose: %d sub_questions: %s", len(sub_questions), sub_questions)
     return {"sub_questions": sub_questions}

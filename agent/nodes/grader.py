@@ -12,7 +12,7 @@ log = logging.getLogger(__name__)
 # [-2.0, -0.5] (15/18), while the best off-topic chunk scores <= -2.03. -1.0 keeps a 1-point margin from it;
 # 0.0 dropped relevant evidence (14/18, and fewer rows reached the 2 chunks needed to answer without retry).
 _THRESHOLD = -1.0
-_MODEL_NAME = "cross-encoder/ms-marco-MiniLM-L-6-v2"
+_MODEL_NAME = "cross-encoder/mmarco-mMiniLMv2-L12-H384-v1"  # multilingual: questions and chunks are EN or ET
 _model: CrossEncoder | None = None
 
 
@@ -20,7 +20,10 @@ def _get_model() -> CrossEncoder:
     global _model
     if _model is None:
         log.info("grader: loading cross-encoder %s", _MODEL_NAME)
-        _model = CrossEncoder(_MODEL_NAME)
+        _model = CrossEncoder(_MODEL_NAME, device="cpu")  # small model; MPS caches GPU buffers and never frees them
+        # On CPU the forward pass hit SIGBUS / NaN reading weights straight from the mmapped safetensors file
+        for p in _model.model.parameters():
+            p.data = p.data.clone()
     return _model
 
 

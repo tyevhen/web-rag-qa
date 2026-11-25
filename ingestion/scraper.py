@@ -77,11 +77,19 @@ async def scrape_single(url: str, crawler: AsyncWebCrawler) -> list[RawChunk]:
     return [RawChunk(content=md, metadata={"url": result.url, "source": domain})]
 
 
-async def scrape_site(url: str, crawler: AsyncWebCrawler) -> list[RawChunk]:
+def _excluded(url: str, exclude_paths: list[str]) -> bool:
+    """Whole path segments only: "/en" skips /en and /en/x, not /energia."""
+    path = urlparse(url).path.rstrip("/")
+    return any(path == p.rstrip("/") or path.startswith(p.rstrip("/") + "/") for p in exclude_paths)
+
+
+async def scrape_site(url: str, crawler: AsyncWebCrawler, exclude_paths: list[str] = []) -> list[RawChunk]:
     parsed = urlparse(url)
     domain = parsed.netloc
     # A path (e.g. /en) scopes the crawl to that section; a bare domain crawls the whole sitemap
-    target_urls = await (_section_urls(url) if parsed.path.strip("/") else _seed_urls(domain))
+    seeded = await (_section_urls(url) if parsed.path.strip("/") else _seed_urls(domain))
+    target_urls = [u for u in seeded if not _excluded(u, exclude_paths)]
+    log.info("Skipped %d URLs under %s", len(seeded) - len(target_urls), exclude_paths)
 
     log.info("Crawling %d URLs", len(target_urls))
     results = cast(list[CrawlResult], await crawler.arun_many(target_urls, config=_CRAWL_CONFIG))

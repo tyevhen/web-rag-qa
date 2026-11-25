@@ -36,3 +36,4 @@ def configure_logging() -> None:
     root.setLevel(logging.INFO)
     for name in ("httpx", "httpcore", "asyncio"):
         logging.getLogger(name).setLevel(logging.WARNING)
+

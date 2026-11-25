@@ -1,6 +1,8 @@
 from typing import Any
 
-from dashboard.analysis.runs import broken, default_pair, judge_summary, threshold_rows
+import pandas as pd
+
+from dashboard.analysis.runs import broken, default_pair, judge_summary, serving_by_day, serving_line, threshold_rows
 
 
 def _run(generator: str = "g", error_rate: float = 0.0, **metrics: Any) -> dict[str, Any]:
@@ -36,3 +38,17 @@ def test_default_pair_takes_latest_run_of_two_newest_generators():
     runs = [_run("x"), _run("x"), _run("y"), _run("z")]
     assert default_pair(runs) == (0, 2)
     assert default_pair([_run("x"), _run("x")]) == (0, 1)
+
+
+def _call(node: str, ttft_ms: int, tpot_ms: float | None = 20.0) -> dict[str, Any]:
+    return {"node": node, "start_ms": 1000, "ttft_ms": ttft_ms, "total_ms": ttft_ms + 500,
+            "prompt_tokens": 900, "output_tokens": 26, "tpot_ms": tpot_ms}
+
+
+def test_serving_numbers_come_from_the_last_reason_call():
+    log = pd.DataFrame({"day": ["d1", "d1", "d2"],
+                        "llm_calls": [[_call("decompose", 9000), _call("reason", 500)], [_call("reason", 1500)], []]})
+    by_day = serving_by_day(log)
+    assert list(by_day.index) == ["d1"] and by_day.loc["d1", "ttft p50"] == 1.0
+    assert serving_line([_call("reason", 500, None)]) == "first answer token at 1.5 s · prompt 900 tokens"
+    assert serving_line([]) == ""

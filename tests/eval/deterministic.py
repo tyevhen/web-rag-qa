@@ -79,8 +79,8 @@ def routing(results: list[RunResult]) -> dict[str, float | None]:
     unanswerable = [r for r in ok if r.row.category == "unanswerable"]
     retried = [r for r in ok if r.retry_count > 0]
     return {
-        "false_refusal_rate": _rate(sum(1 for r in answerable if r.route == "clarify"), len(answerable)),
-        "false_answer_rate": _rate(sum(1 for r in unanswerable if r.route == "reason"), len(unanswerable)),
+        # A clarifying question or the policy check's refusal: either way an answerable question got no answer
+        "false_refusal_rate": _rate(sum(1 for r in answerable if r.route in ("clarify", "blocked_input")), len(answerable)),
         # Route alone can't tell "the guide doesn't cover this" from a made-up answer; these read the text
         "off_corpus_answered_rate": _rate(
             sum(1 for r in unanswerable if r.route == "reason" and not is_refusal(r.answer)), len(unanswerable)),
@@ -91,11 +91,29 @@ def routing(results: list[RunResult]) -> dict[str, float | None]:
     }
 
 
+def _p95(values: list[float]) -> float | None:
+    ordered = sorted(values)
+    return ordered[min(len(ordered) - 1, int(0.95 * len(ordered)))] if ordered else None
+
+
+def _median(values: list[float]) -> float | None:
+    return statistics.median(values) if values else None
+
+
 def operational(results: list[RunResult]) -> dict[str, float | None]:
-    latencies = sorted(r.latency_s for r in results if not r.error)
-    p95 = latencies[min(len(latencies) - 1, int(0.95 * len(latencies)))] if latencies else None
+    ok = [r for r in results if not r.error]
+    latencies = [r.latency_s for r in ok]
+    calls = [c for r in ok for c in r.llm_calls]
+    reason = [c for c in calls if c.node == "reason"]
+    llm_seconds = sum(c.total_ms for c in calls) / 1000
     return {
-        "latency_p50_s": statistics.median(latencies) if latencies else None,
-        "latency_p95_s": p95,
+        "latency_p50_s": _median(latencies),
+        "latency_p95_s": _p95(latencies),
         "error_rate": _rate(sum(1 for r in results if r.error), len(results)),
+        # Serving numbers of the answer-writing call; None when every call came from the LLM cache
+        "reason_ttft_p50_s": _median([c.ttft_ms / 1000 for c in reason]),
+        "reason_ttft_p95_s": _p95([c.ttft_ms / 1000 for c in reason]),
+        "reason_tpot_p50_ms": _median([c.tpot_ms for c in reason if c.tpot_ms is not None]),
+        # One request at a time, so this is decode speed over all calls, not a server's capacity
+        "output_tokens_per_s": round(sum(c.output_tokens for c in calls) / llm_seconds, 1) if llm_seconds else None,
     }

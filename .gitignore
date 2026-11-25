@@ -21,6 +21,7 @@
 !/db/
 !/evaluation/
 !/ingestion/
+!/llm/
 !/migrations/
 !/services/
 !/worker/

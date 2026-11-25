@@ -15,9 +15,11 @@ from settings import get_settings
 log = logging.getLogger(__name__)
 
 
-async def ingest_url_task(ctx: dict, url: str, mode: str = "crawl") -> dict:
-    log.info("Worker: starting ingestion for %s (mode=%s)", url, mode)
-    summary, pages_scraped = await ingest_url(url, ctx["documents"], ctx["crawler"], mode)
+async def ingest_url_task(ctx: dict, url: str, mode: str = "crawl", langs: list[str] | None = None,
+                          exclude_paths: list[str] | None = None) -> dict:
+    log.info("Worker: starting ingestion for %s (mode=%s, langs=%s)", url, mode, langs)
+    summary, pages_scraped = await ingest_url(url, ctx["documents"], ctx["crawler"], mode,
+                                              langs or ["en"], exclude_paths or [])
     log.info("Worker: finished ingestion for %s (%d pages)", url, pages_scraped)
     return {"url": url, "pages_scraped": pages_scraped, "summary": summary}
 

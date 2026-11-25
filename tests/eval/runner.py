@@ -10,6 +10,8 @@ from agent.embed import embed_query, get_encoder
 from agent.graph import route_of
 from agent.nodes.grader import grading_queries, score_chunks
 from agent.nodes.retriever import make_retriever
+from agent.serving import LlmCall, ServingStats
+from agent.lang import question_lang
 from agent.state import AgentState, Chunk, initial_state
 from db.repositories.documents import DocumentRepository
 from tests.eval.dataset import GoldenRow, content_hash
@@ -24,6 +26,7 @@ class RunResult:
     row: GoldenRow
     route: str = ""
     answer: str = ""
+    clarifying_questions: list[str] = field(default_factory=list)  # model text shown to the user on the clarify route
     sub_questions: list[str] = field(default_factory=list)
     retrieved: list[Chunk] = field(default_factory=list)
     graded: list[Chunk] = field(default_factory=list)
@@ -32,6 +35,7 @@ class RunResult:
     latency_s: float = 0.0
     # Hashes of top-k chunks per retrieval variant, for the hybrid/decomposition ablation
     ablation: dict[str, list[str]] = field(default_factory=dict)
+    llm_calls: list[LlmCall] = field(default_factory=list)  # serving numbers; cached calls aren't timed
     error: str = ""
 
 
@@ -40,8 +44,9 @@ def _initial_state(row: GoldenRow, sub_questions: list[str] | None = None) -> Ag
 
 
 async def _ablation(repo: DocumentRepository, row: GoldenRow) -> dict[str, list[str]]:
-    dense = await repo.similarity_search(embed_query(row.question), _ABLATION_K, get_encoder().name)
-    sparse = await repo.fulltext_search(row.question, _ABLATION_K)
+    lang = question_lang(row.question)
+    dense = await repo.similarity_search(embed_query(row.question), _ABLATION_K, get_encoder().name, lang)
+    sparse = await repo.fulltext_search(row.question, _ABLATION_K, lang)
     # Real retriever node with no sub-questions → hybrid over the raw question only
     hybrid = await make_retriever(repo)(_initial_state(row))
     return {
@@ -52,11 +57,11 @@ async def _ablation(repo: DocumentRepository, row: GoldenRow) -> dict[str, list[
 
 
 async def _run_one(graph: CompiledStateGraph, repo: DocumentRepository, row: GoldenRow) -> RunResult:
-    t0 = time.monotonic()
+    t0, serving = time.monotonic(), ServingStats()
     state: dict[str, Any] = {}
     first_pass: list[Chunk] | None = None
     # Stream to also capture the first retrieval: after a retry the final one includes the augmenter's rewrites
-    async for item in graph.astream(_initial_state(row), stream_mode=["updates", "values"]):
+    async for item in graph.astream(_initial_state(row), {"callbacks": [serving]}, stream_mode=["updates", "values"]):
         mode, chunk = cast(tuple[str, dict[str, Any]], item)
         if mode == "values":
             state = chunk
@@ -70,12 +75,14 @@ async def _run_one(graph: CompiledStateGraph, repo: DocumentRepository, row: Gol
         row=row,
         route=route_of(state),
         answer=state["answer"],
+        clarifying_questions=state["clarifying_questions"],
         sub_questions=state["sub_questions"],
         retrieved=retrieved,
         graded=state["graded_chunks"],
         retrieved_ce_scores=[float(s) for s in ce_scores],
         retry_count=state["retry_count"],
         latency_s=latency,
+        llm_calls=serving.calls,
         # Same single pass as the other variants, so the decomposition comparison excludes the retry
         ablation={**await _ablation(repo, row), "hybrid_decomposed_first_pass": [content_hash(c.content) for c in first_pass or []]},
     )

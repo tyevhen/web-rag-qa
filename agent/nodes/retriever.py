@@ -25,7 +25,7 @@ def make_retriever(repo: DocumentRepository):
         chunks: dict[str, Chunk] = {}
         rrf_scores: dict[str, float] = {}
 
-        log.info("retrieve: retry_count=%d, %d queries: %s", state["retry_count"], len(queries), queries)
+        log.info("retrieve: retry_count=%d, lang=%s, %d queries: %s", state["retry_count"], state["lang"], len(queries), queries)
 
         # One batch, off the event loop: encoding is CPU-bound and blocks every other request
         encoder = get_encoder()
@@ -33,7 +33,7 @@ def make_retriever(repo: DocumentRepository):
 
         for i, (query, query_embedding) in enumerate(zip(queries, embeddings), start=1):
             # Dense leg — pgvector cosine similarity
-            dense_rows = await repo.similarity_search(query_embedding, _TOP_K, encoder.name)
+            dense_rows = await repo.similarity_search(query_embedding, _TOP_K, encoder.name, state["lang"])
             dense_ids: list[str] = []
             for row in dense_rows:
                 cid = row["id"]
@@ -41,7 +41,7 @@ def make_retriever(repo: DocumentRepository):
                 dense_ids.append(cid)
 
             # Sparse leg — PostgreSQL full-text search
-            sparse_rows = await repo.fulltext_search(query, _TOP_K)
+            sparse_rows = await repo.fulltext_search(query, _TOP_K, state["lang"])
             sparse_ids: list[str] = []
             for row in sparse_rows:
                 cid = row["id"]

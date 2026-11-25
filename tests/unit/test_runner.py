@@ -19,11 +19,11 @@ class ScriptedGraph:
     def __init__(self, first: list[str]) -> None:
         self.first = first
 
-    async def astream(self, state: Any, stream_mode: list[str]):
+    async def astream(self, state: Any, config: Any, stream_mode: list[str]):
         yield "updates", {"retrieve": {"retrieved_chunks": [_chunk(t) for t in self.first]}}
         yield "updates", {"retrieve": {"retrieved_chunks": [_chunk("b")]}}
         yield "values", {"retrieved_chunks": [_chunk("b")], "graded_chunks": [], "sub_questions": [],
-                         "answer": "", "retry_count": 1}
+                         "answer": "", "retry_count": 1, "clarifying_questions": []}
 
 
 @pytest.mark.parametrize(("first", "expected"), [(["a"], [content_hash("a")]), ([], [])])
