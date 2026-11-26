@@ -21,15 +21,22 @@ def broken(report: dict[str, Any]) -> bool:
     return error_rate(report) >= BROKEN
 
 
-def threshold_rows(run: dict[str, Any], thresholds: dict[str, dict[str, float]]) -> list[dict[str, Any]]:
+def _limit(bounds: dict[str, float]) -> str:
+    return f"min {bounds['min']}" if "min" in bounds else f"max {bounds['max']}"
+
+
+def threshold_rows(run: dict[str, Any], gates: dict[str, dict[str, float]],
+                   target: dict[str, dict[str, float]]) -> list[dict[str, Any]]:
+    """One row per gate; `target` is shown where a floor replaced it."""
     rows = []
-    for metric, bounds in thresholds.items():
+    for metric, bounds in gates.items():
         value = lookup(run, metric)
         ok = value is None or bounds.get("min", float("-inf")) <= value <= bounds.get("max", float("inf"))
         rows.append({
             "metric": metric,
             "value": value,
-            "limit": f"min {bounds['min']}" if "min" in bounds else f"max {bounds['max']}",
+            "limit": _limit(bounds),
+            "target": _limit(target[metric]) if metric in target and target[metric] != bounds else "",
             "status": "not measured" if value is None else ("pass" if ok else "FAIL"),
         })
     return rows

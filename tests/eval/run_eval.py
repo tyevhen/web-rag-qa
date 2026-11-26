@@ -6,7 +6,7 @@
     uv run python -m tests.eval.run_eval --golden my.jsonl  # your own questions: {"question", "category"} per line
     uv run python -m tests.eval.run_eval --no-cache   # call the LLM every time, so every call is timed
 
-Exits 1 when any metric violates tests/eval/thresholds.json.
+Exits 1 when any metric violates its gate: tests/eval/thresholds.json, or the golden set's floors.json entry.
 """
 import argparse
 import asyncio
@@ -29,7 +29,7 @@ from settings import get_settings
 from tests.eval import deterministic, ragas_metrics, report
 from tests.eval.dataset import GOLDEN_PATH, load_golden
 from tests.eval.runner import RunResult, run_all
-from tests.eval.thresholds import check_thresholds
+from tests.eval.thresholds import check_thresholds, target
 
 # Keyed by prompt + model params: a rerun only calls the LLM where its inputs changed. Delete it to resample.
 _LLM_CACHE = Path(__file__).parent / "results" / "llm_cache.sqlite"
@@ -60,7 +60,7 @@ async def main(skip_llm: bool, limit: int | None, golden: Path, cache: bool) -> 
 
     full: dict[str, Any] = {
         "meta": report.meta(len(rows), None if skip_llm else judge_model_name(), get_settings().llm_model,
-                            get_settings().embedder),
+                            get_settings().embedder, golden.name),
         "deterministic": _deterministic(results),
     }
     scores: ragas_metrics.PerQuestion = {}
@@ -70,6 +70,9 @@ async def main(skip_llm: bool, limit: int | None, golden: Path, cache: bool) -> 
     violations = check_thresholds(full)
     path = report.write(full, results, violations, scores)
     print(f"Full results → {path}")
+    gaps = check_thresholds(full, target())
+    if gaps != violations:  # floors in use: show how far this set still is from the target
+        print("Below target (not failing):\n" + "\n".join(f"- {g}" for g in gaps if g not in violations))
     return 1 if violations else 0
 
 

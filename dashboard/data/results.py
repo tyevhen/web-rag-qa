@@ -5,7 +5,7 @@ from typing import Any
 
 import streamlit as st
 
-from tests.eval.thresholds import RESULTS_DIR, THRESHOLDS_PATH
+from tests.eval.thresholds import RESULTS_DIR, THRESHOLDS_PATH, gates
 
 
 def result_files() -> list[Path]:
@@ -24,3 +24,8 @@ def load_runs() -> list[dict[str, Any]]:
 
 def load_thresholds() -> dict[str, dict[str, float]]:
     return json.loads(THRESHOLDS_PATH.read_text())
+
+
+def load_gates(run: dict[str, Any]) -> dict[str, dict[str, float]]:
+    """The run's gates: the target, with its golden set's floors (floors.json) in place."""
+    return gates(run)

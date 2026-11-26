@@ -36,6 +36,10 @@ class Settings(BaseSettings):
     eval_judge_base_url: str | None = None
     eval_judge_api_key: SecretStr | None = None
     eval_judge_model: str = "openai/gpt-oss-20b"
+    # Judge calls per minute: 4 fits a free tier (~8k tokens/min); a paid endpoint takes far more
+    eval_judge_rpm: int = 4
+    # OpenRouter only: the one host to serve the judge (no fallbacks), so scores don't shift between hosts
+    eval_judge_provider: str | None = None
     eval_sample_size: int = 20
 
     # LangSmith tracing — all optional; tracing is disabled when unset

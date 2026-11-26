@@ -3,7 +3,7 @@ import streamlit as st
 
 from dashboard.analysis.runs import BROKEN, broken, error_rate, threshold_rows, trend
 from dashboard.components.conversation import run_label
-from dashboard.data.results import load_runs, load_thresholds
+from dashboard.data.results import load_gates, load_runs, load_thresholds
 from tests.eval.thresholds import check_thresholds
 
 st.title("Offline evaluation")
@@ -35,7 +35,8 @@ if broken(run):
 st.metric("Threshold violations", len(violations))
 
 st.subheader("Metrics vs thresholds")
-st.dataframe(pd.DataFrame(threshold_rows(run, thresholds)), width="stretch", hide_index=True)
+st.caption("A golden set with floors (`floors.json`) fails only below today's level; `target` is the shared goal.")
+st.dataframe(pd.DataFrame(threshold_rows(run, load_gates(run), thresholds)), width="stretch", hide_index=True)
 
 left, right = st.columns(2)
 with left:

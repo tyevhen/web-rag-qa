@@ -153,7 +153,7 @@ Set in `.env` (see `.env.example`):
 | `LANGCHAIN_TRACING_V2`, `LANGCHAIN_API_KEY`, `LANGCHAIN_PROJECT` | no | LangSmith tracing |
 | `LLM_BASE_URL`, `LLM_API_KEY` | no | OpenAI-compatible endpoint, default local Ollama (no key) |
 | `LLM_TIMEOUT`, `REQUEST_TIMEOUT` | no | Seconds per LLM attempt (default 180) and per /ask run (default 600) |
-| `EVAL_JUDGE_BASE_URL`, `EVAL_JUDGE_API_KEY`, `EVAL_JUDGE_MODEL` | no | The judge for evals and nightly scoring: any OpenAI-compatible endpoint, a different model from `LLM_MODEL` |
+| `EVAL_JUDGE_BASE_URL`, `EVAL_JUDGE_API_KEY`, `EVAL_JUDGE_MODEL`, `EVAL_JUDGE_RPM`, `EVAL_JUDGE_PROVIDER` | no | The judge for evals and nightly scoring: any OpenAI-compatible endpoint, a different model from `LLM_MODEL`; `EVAL_JUDGE_RPM` calls/min (default 4, for a free tier); `EVAL_JUDGE_PROVIDER` pins one OpenRouter host |
 | `EMBEDDER` | no | Encoder search uses (`agent/embed.py` `ENCODERS`), default `BAAI/bge-small-en-v1.5` |
 | `SHADOW_EMBEDDERS` | no | JSON list of extra encoders ingestion also writes, e.g. `'["intfloat/multilingual-e5-small"]'` |
 
@@ -189,7 +189,7 @@ Integration tests run against a live API with content already ingested:
 uv run pytest tests/ -v
 ```
 
-LLM-as-judge evaluation (the judge at `EVAL_JUDGE_BASE_URL`; a free tier's token limits apply):
+LLM-as-judge evaluation (the judge at `EVAL_JUDGE_BASE_URL`, paced at `EVAL_JUDGE_RPM` calls/min):
 
 ```bash
 uv run python tests/eval/run_eval.py

@@ -1,0 +1,7 @@
+{
+  "golden_et.jsonl": {
+    "deterministic.retrieval.hybrid_decomposed.hit@6": {"min": 0.75},
+    "deterministic.routing.false_refusal_rate": {"max": 0.19},
+    "deterministic.routing.off_corpus_answered_rate": {"max": 0.189}
+  }
+}

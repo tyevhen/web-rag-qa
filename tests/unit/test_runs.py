@@ -19,9 +19,11 @@ def test_threshold_rows_pass_fail_and_not_measured():
     thresholds = {"deterministic.retrieval.dense.mrr": {"min": 0.5},
                   "deterministic.retrieval.dense.hit": {"max": 0.2},
                   "deterministic.retrieval.dense.absent": {"min": 0.1}}
-    rows = threshold_rows(_run(mrr=0.6, hit=0.3), thresholds)
+    target = {**thresholds, "deterministic.retrieval.dense.mrr": {"min": 0.8}}
+    rows = threshold_rows(_run(mrr=0.6, hit=0.3), thresholds, target)
     assert [r["status"] for r in rows] == ["pass", "FAIL", "not measured"]
     assert [r["limit"] for r in rows] == ["min 0.5", "max 0.2", "min 0.1"]
+    assert [r["target"] for r in rows] == ["min 0.8", "", ""]  # shown only where a floor replaced it
 
 
 def test_judge_summary_counts_wins_and_ties():

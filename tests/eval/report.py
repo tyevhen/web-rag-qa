@@ -56,12 +56,13 @@ def write(report: dict[str, Any], results: list[RunResult], violations: list[str
     return stem.with_suffix(".json")
 
 
-def meta(rows: int, judge: str | None, generator: str, embedder: str) -> dict[str, Any]:
+def meta(rows: int, judge: str | None, generator: str, embedder: str, golden: str) -> dict[str, Any]:
     return {
         "timestamp": datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ"),
         "rows": rows,
         "judge": judge or "skipped",
         "generator": generator,
         "embedder": embedder,
+        "golden": golden,  # picks the floors in floors.json
     }
 

@@ -13,9 +13,6 @@ from settings import get_settings
 
 # Sequential + patient retries: free hosted tiers allow a few thousand tokens/min, and 429s surface as NaN scores
 RUN_CONFIG = RunConfig(max_workers=1, max_retries=10, max_wait=60, timeout=180)
-# 4 calls/min, no bursts: at ~1.5k tokens per judge call that stays under an 8k tokens/min limit,
-# so retries are for the rare large call, not the normal pace
-_PACE = InMemoryRateLimiter(requests_per_second=4 / 60, max_bucket_size=1)
 
 
 # Multilingual, so Estonian answers are scored as fairly as English ones; scores before this switch are not comparable
@@ -36,7 +33,8 @@ class LocalEmbeddings(Embeddings):
 
 def judge_model_name() -> str:
     s = get_settings()
-    return f"{urlparse(s.eval_judge_base_url or '').hostname or 'unset'}:{s.eval_judge_model}"
+    host = f"{urlparse(s.eval_judge_base_url or '').hostname or 'unset'}:{s.eval_judge_model}"
+    return f"{host}@{s.eval_judge_provider}" if s.eval_judge_provider else host
 
 
 @lru_cache(maxsize=1)
@@ -48,13 +46,17 @@ def get_judge_chat() -> ChatOpenAI:
         model=s.eval_judge_model,
         api_key=s.eval_judge_api_key,
         base_url=s.eval_judge_base_url,
-        rate_limiter=_PACE,
+        # No bursts: at ~1.5k tokens per call, EVAL_JUDGE_RPM keeps a run under the endpoint's tokens/min limit
+        rate_limiter=InMemoryRateLimiter(requests_per_second=s.eval_judge_rpm / 60, max_bucket_size=1),
         temperature=0,
         # gpt-oss is a reasoning model: default effort burns ~4x the tokens and can hit the length limit
         # mid-thought (ragas LLMDidNotFinishException). Judging/extraction needs little reasoning.
         reasoning_effort="low",
         # 2048 ran out while extracting statements from long answers, which came back NaN
         max_completion_tokens=4096,
+        # OpenRouter routing: fail rather than fall back to another host
+        extra_body={"provider": {"order": [s.eval_judge_provider], "allow_fallbacks": False}}
+        if s.eval_judge_provider else None,
     )
 
 
