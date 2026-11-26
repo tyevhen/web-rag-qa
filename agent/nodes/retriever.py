@@ -13,9 +13,9 @@ _FINAL_K = 6
 _RRF_K = 60
 
 
-def _rrf(scores: dict[str, float], ranked_ids: list[str]) -> None:
+def _rrf(scores: dict[str, float], ranked_ids: list[str], weight: float = 1.0) -> None:
     for rank, doc_id in enumerate(ranked_ids, start=1):
-        scores[doc_id] = scores.get(doc_id, 0.0) + 1.0 / (_RRF_K + rank)
+        scores[doc_id] = scores.get(doc_id, 0.0) + weight / (_RRF_K + rank)
 
 
 def make_retriever(repo: DocumentRepository):
@@ -50,8 +50,10 @@ def make_retriever(repo: DocumentRepository):
 
             log.info("retrieve: query %d/%d %r → dense=%d sparse=%d", i, len(queries), query, len(dense_ids), len(sparse_ids))
 
-            _rrf(rrf_scores, dense_ids)
-            _rrf(rrf_scores, sparse_ids)
+            # The 7B generator writes broken Estonian sub-questions; the user's own wording outvotes them
+            weight = 2.0 if i == 1 and state["lang"] == "et" else 1.0
+            _rrf(rrf_scores, dense_ids, weight)
+            _rrf(rrf_scores, sparse_ids, weight)
 
         if not chunks:
             log.info("retrieve: no chunks found")

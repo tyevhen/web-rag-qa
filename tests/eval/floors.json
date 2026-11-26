@@ -2,6 +2,11 @@
   "golden_et.jsonl": {
     "deterministic.retrieval.hybrid_decomposed.hit@6": {"min": 0.75},
     "deterministic.routing.false_refusal_rate": {"max": 0.19},
-    "deterministic.routing.off_corpus_answered_rate": {"max": 0.189}
+    "deterministic.routing.off_corpus_answered_rate": {"max": 0.189},
+    "llm.generation.faithfulness": {"min": 0.84},
+    "llm.generation.factual_correctness": {"min": 0.45}
+  },
+  "golden.jsonl": {
+    "llm.generation.faithfulness": {"min": 0.81}
   }
 }
