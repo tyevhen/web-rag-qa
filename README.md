@@ -31,7 +31,7 @@ decompose → retrieve → grade ─┬─ ≥2 relevant chunks ─────�
 |---|---|
 | `decompose` | LLM splits the question into 2–3 sub-questions, using conversation history for follow-ups |
 | `retrieve` | Hybrid search per sub-question: pgvector cosine + Postgres full-text search (top 10 each), fused with Reciprocal Rank Fusion (k=60), top 6 kept |
-| `grade` | Cross-encoder (`ms-marco-MiniLM-L-6-v2`) scores each chunk against the question; chunks scoring below −1.0 are dropped |
+| `grade` | Cross-encoder (`mmarco-mMiniLMv2-L12-H384-v1`, multilingual) scores each chunk against the question; chunks scoring below −1.0 are dropped |
 | `augment` | On retry, LLM rewrites sub-questions with broader domain vocabulary before retrieving again (max one retry) |
 | `reason` | LLM answers from the numbered graded chunks |
 | `format` | Lists the passages behind each `[n]` (section, source page, link to the passage) |

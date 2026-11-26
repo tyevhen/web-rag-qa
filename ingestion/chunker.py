@@ -10,7 +10,7 @@ _CHUNK_ENCODER = ENCODERS["BAAI/bge-small-en-v1.5"]
 _MAX_TOKENS = 512
 
 
-def _fits(text: str) -> bool:
+def fits(text: str) -> bool:
     # Encoders with a smaller window see these chunks cut off
     return len(text) <= _MAX_CHARS and count_tokens(text, _CHUNK_ENCODER) <= _MAX_TOKENS
 
@@ -61,7 +61,7 @@ def _hard_split(text: str) -> list[str]:
     step = _MAX_TOKENS - 12
     words = [w[i : i + step] for w in text.split() for i in range(0, len(w), step)]
     for word in words:
-        if buf and not _fits(f"{buf} {word}"):
+        if buf and not fits(f"{buf} {word}"):
             parts.append(buf)
             buf = word
         else:
@@ -71,18 +71,42 @@ def _hard_split(text: str) -> list[str]:
     return parts
 
 
+def _split_table(table: str) -> list[str]:
+    """Split a markdown table into groups of whole rows, each repeating the header and separator rows."""
+    lines = table.splitlines()
+    head = "\n".join(lines[:2])
+    parts: list[str] = []
+    buf = head
+    for row in lines[2:]:
+        if buf != head and not fits(f"{buf}\n{row}"):
+            parts.append(buf)
+            buf = head
+        buf = f"{buf}\n{row}"
+    parts.append(buf)
+    # A single row too big even on its own falls back to the word split
+    return [q for p in parts for q in ([p] if fits(p) else _hard_split(p))]
+
+
+def _split_para(para: str) -> list[str]:
+    if fits(para):
+        return [para]
+    lines = para.splitlines()
+    if len(lines) > 2 and all(line.startswith("|") for line in lines):
+        return _split_table(para)
+    return _hard_split(para)
+
+
 def _cap_size(chunk: RawChunk) -> list[RawChunk]:
     """Pack paragraphs into pieces within _MAX_CHARS and the encoder window; sections without headers would otherwise stay whole."""
-    if _fits(chunk.content):
+    if fits(chunk.content):
         return [chunk]
     pieces: list[str] = []
     buf = ""
     for para in (p.strip() for p in chunk.content.split("\n\n")):
         if not para:
             continue
-        parts = [para] if _fits(para) else _hard_split(para)
-        for part in parts:
-            if buf and not _fits(f"{buf}\n\n{part}"):
+        for part in _split_para(para):
+            if buf and not fits(f"{buf}\n\n{part}"):
                 pieces.append(buf)
                 buf = part
             else:

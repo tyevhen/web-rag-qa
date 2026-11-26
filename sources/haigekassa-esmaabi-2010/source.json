@@ -1,0 +1,13 @@
+{
+  "url": "https://tervisekassa.ee/sites/default/files/haigekassa_teatajad/hk_vigastused_esmaabi.pdf",
+  "file": "hk_vigastused_esmaabi.pdf",
+  "title": "Elupäästev esmaabi vigastuste korral (Eesti Haigekassa)",
+  "langs": [
+    "et"
+  ],
+  "skip_pages": [
+    1,
+    4
+  ],
+  "columns": true
+}

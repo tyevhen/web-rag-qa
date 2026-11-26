@@ -30,8 +30,10 @@ def text_fragment(content: str) -> str:
 def _build_citation(index: int, chunk: Chunk) -> dict[str, Any]:
     """The API adds `url`, the passage at GET /chunks/{chunk_id}; the answer keeps its plain [n] markers."""
     meta = chunk.metadata
-    return {"n": index + 1, "chunk_id": chunk.id, "section": meta.get("section", ""),
-            "source_url": meta.get("url", "") + text_fragment(chunk.content)}
+    url = meta.get("url", "")
+    if "#page=" not in url:  # a PDF page link (ingestion/pdf.py) has its fragment; PDF viewers ignore text ones
+        url += text_fragment(chunk.content)
+    return {"n": index + 1, "chunk_id": chunk.id, "section": meta.get("section", ""), "source_url": url}
 
 
 async def format_response(state: AgentState) -> dict[str, Any]:

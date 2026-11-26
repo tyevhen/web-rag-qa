@@ -5,8 +5,13 @@ from agent.lang import detect_lang
 from ingestion.scraper import RawChunk
 
 log = logging.getLogger(__name__)
-_MIN_WORDS = 20
+MIN_WORDS = 20
 _MIN_ALPHA_RATIO = 0.5
+_TABLE_SYNTAX = str.maketrans("", "", "|-:*_")  # markdown table cells and bold marks
+
+
+def word_count(text: str) -> int:
+    return len(text.replace("|", " ").split())  # table cells are words too
 
 
 def filter_pages(pages: list[RawChunk], langs: list[str]) -> list[RawChunk]:
@@ -26,10 +31,12 @@ def evaluate_chunks(chunks: list[RawChunk], langs: list[str]) -> list[RawChunk]:
     seen: set[str] = set()
     result: list[RawChunk] = []
     for chunk in chunks:
-        if len(chunk.content.split()) < _MIN_WORDS:
+        if word_count(chunk.content) < MIN_WORDS:
             continue
-        alpha = sum(1 for c in chunk.content if c.isalpha())
-        if alpha / max(len(chunk.content), 1) < _MIN_ALPHA_RATIO:
+        text = chunk.content.translate(_TABLE_SYNTAX)
+        is_table = "\n|---" in chunk.content  # a table of numbers (doses, vital signs) is content, not noise
+        alpha = sum(1 for c in text if (c.isalnum() if is_table else c.isalpha()))
+        if alpha / max(len(text), 1) < _MIN_ALPHA_RATIO:
             continue
         fp = hashlib.md5(chunk.content.encode()).hexdigest()
         if fp in seen:

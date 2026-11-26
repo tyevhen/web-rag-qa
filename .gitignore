@@ -26,10 +26,17 @@
 !/services/
 !/worker/
 !/tests/
+!/sources/
 
 # Docs: only README.md at the root is tracked
 *.md
 !/README.md
+!/sources/**/*.md
+
+# Downloaded originals of the sources (third-party works)
+/sources/**/*.pdf
+/sources/**/*.txt
+/sources/**/*.png
 
 # Not applied by the migration runner (reads /migrations only)
 /db/migrations/

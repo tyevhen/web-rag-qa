@@ -43,3 +43,10 @@ async def test_flagged_answer_becomes_the_refusal(monkeypatch):
 
     assert result == {"answer": REFUSAL["en"], "citations": [], "clarifying_questions": [],
                       "block_reason": "output check on reason: REFUSE weapons"}
+
+
+async def test_a_pdf_page_link_gets_no_text_fragment():
+    state = _state("A [1].")
+    state["graded_chunks"][0].metadata["url"] = "https://x/a.pdf#page=17"
+    result = await format_response(state)
+    assert result["citations"][0]["source_url"] == "https://x/a.pdf#page=17"

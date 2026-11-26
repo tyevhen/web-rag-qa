@@ -69,7 +69,7 @@ class ModelsResponse(BaseModel):
 
 class IngestUrlRequest(BaseModel):
     url: str
-    mode: Literal["crawl", "single"] = "crawl"
+    mode: Literal["crawl", "single", "pdf"] = "crawl"  # pdf: the local copy in sources/ (ingestion/pdf.py)
     langs: list[Annotated[str, Field(pattern=r"^[a-z]{2}$")]] = Field(default=["en"], min_length=1)  # pages kept
     exclude_paths: list[Annotated[str, Field(pattern=r"^/")]] = []  # URL path prefixes not crawled, e.g. "/en"
 

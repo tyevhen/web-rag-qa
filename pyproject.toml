@@ -28,6 +28,7 @@ dependencies = [
     "rapidfuzz>=3.14.6",
     "scikit-learn>=1.8.0",
     "httpx-sse>=0.4.3",
+    "pymupdf4llm>=2.1",
 ]
 
 [tool.pyright]

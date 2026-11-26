@@ -12,6 +12,7 @@ from db.repositories.documents import DocumentRepository
 from ingestion.chunker import chunk_raw
 from ingestion.cleaner import strip_layout
 from ingestion.evaluator import evaluate_chunks, filter_pages
+from ingestion.pdf import assign_pages, load_pdf, merge_short
 from ingestion.scraper import RawChunk, scrape_single, scrape_site
 
 log = logging.getLogger(__name__)
@@ -40,13 +41,19 @@ async def _embed_and_store(repo: DocumentRepository, doc_id: str, chunks: list[R
 
 async def ingest_url(url: str, repo: DocumentRepository, crawler, mode: str = "crawl",
                      langs: list[str] = ["en"], exclude_paths: list[str] = []) -> tuple[str, int]:
-    scraped = await (scrape_single(url, crawler) if mode == "single" else scrape_site(url, crawler, exclude_paths))
-    raw = filter_pages(strip_layout(scraped), langs)
+    if mode == "pdf":
+        # One text for the whole PDF: strip_layout needs many pages, and pymupdf4llm already drops running headers
+        raw = filter_pages([await asyncio.to_thread(load_pdf, url)], langs)
+    else:
+        scraped = await (scrape_single(url, crawler) if mode == "single" else scrape_site(url, crawler, exclude_paths))
+        raw = filter_pages(strip_layout(scraped), langs)
     if not raw:
         raise RuntimeError(f"No content in {langs} scraped from {url!r}")
 
     # Off the event loop: the chunker counts tokens with the embedder's tokenizer (and loads it on first use)
     chunks = await asyncio.to_thread(chunk_raw, raw, "markdown_headers", ["url", "source", "section", "lang"])
+    if mode == "pdf":
+        chunks = await asyncio.to_thread(merge_short, assign_pages(chunks, url))  # before evaluation drops short ones
     chunks = evaluate_chunks(chunks, langs)
     if not chunks:
         raise RuntimeError("No usable chunks after evaluation")
