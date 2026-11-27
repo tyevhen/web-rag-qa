@@ -33,7 +33,7 @@
 *.md
 !/README.md
 !/sources/**/*.md
-!/tuning/README.md
+!/tuning/*.md
 
 # Downloaded originals of the sources (third-party works)
 /sources/**/*.pdf
