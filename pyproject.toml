@@ -44,6 +44,7 @@ asyncio_mode = "auto"
 dev = [
     "asyncpg-stubs>=0.31.2",
     "langchain-community>=0.4.1",
+    "mlx-lm>=0.32.2 ; sys_platform == 'darwin'",
     "pyright>=1.1.409",
     "pytest>=9.0.3",
     "pytest-asyncio>=1.3.0",

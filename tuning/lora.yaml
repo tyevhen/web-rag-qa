@@ -1,0 +1,20 @@
+# mlx_lm.lora settings; paths come from the command line (tuning/README.md)
+fine_tune_type: lora
+train: true
+mask_prompt: true          # loss on the answer only, not on the prompt and passages
+batch_size: 1
+grad_accumulation_steps: 4 # effective batch 4
+learning_rate: 5.0e-5
+iters: 630                 # ~2 epochs of 1256 rows at effective batch 4
+max_seq_length: 3072       # = tuning/split.py MAX_TOKENS
+grad_checkpoint: true      # trades speed for memory on 16 GB
+num_layers: 8              # 16 ran out of memory on 3k-token rows
+lora_parameters:
+  rank: 16
+  dropout: 0.05
+  scale: 2.0
+steps_per_report: 10
+steps_per_eval: 50
+val_batches: -1            # the whole validation set
+save_every: 50
+seed: 0

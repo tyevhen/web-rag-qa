@@ -5,8 +5,8 @@ import re
 _REFUSAL = re.compile(
     r"(does not|doesn['’]t|do not|don['’]t) (include|contain|cover|provide|have|mention)|no information"
     r"|not (?:directly |explicitly )?(covered|mentioned|provided)|can(?:not|['’]t) (find|answer|provide)"
-    # Estonian: "does not contain/mention", "no information", "could not find", "cannot answer"
-    r"|ei (sisalda|maini|käsitle|kirjelda)|(teave|info|informatsioon)[^.]{0,30} puudub|puudub (teave|info)"
+    # Estonian: "does not contain/mention/cover", "no information", "could not find", "cannot answer"
+    r"|ei (sisalda|maini|käsitle|kirjelda|kata)|(teave|info|informatsioon)[^.]{0,30} puudub|puudub (teave|info)"
     r"|ei ole (mainitud|kirjeldatud|käsitletud)|ei leidnud|ei (saa|oska) vastata",
     re.IGNORECASE,
 )

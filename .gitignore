@@ -26,12 +26,14 @@
 !/services/
 !/worker/
 !/tests/
+!/tuning/
 !/sources/
 
 # Docs: only README.md at the root is tracked
 *.md
 !/README.md
 !/sources/**/*.md
+!/tuning/README.md
 
 # Downloaded originals of the sources (third-party works)
 /sources/**/*.pdf
@@ -48,6 +50,9 @@ __pycache__/
 # Eval output
 /tests/eval/results.json
 /tests/eval/results/
+
+# Generated training data
+/tuning/data/
 
 # OS
 .DS_Store

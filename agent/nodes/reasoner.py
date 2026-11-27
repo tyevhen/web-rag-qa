@@ -33,7 +33,7 @@ class MarkerStream:
         held, self._held = self._held, ""
         return held
 
-_prompt = ChatPromptTemplate.from_messages([
+ANSWER_PROMPT = ChatPromptTemplate.from_messages([
     ("system", "{system_prompt}"),
     MessagesPlaceholder("history"),
     ("human",
@@ -51,21 +51,20 @@ _prompt = ChatPromptTemplate.from_messages([
 ])
 
 
+def answer_inputs(config: TopicConfig, state: AgentState) -> dict[str, Any]:
+    """ANSWER_PROMPT's variables; the tuning exporter (tuning/export.py) builds its prompts with this too."""
+    context = "\n\n---\n\n".join(f"[{i + 1}] {chunk.content}" for i, chunk in enumerate(state["graded_chunks"]))
+    return {"system_prompt": config.system_prompt, "history": _history_messages(state["history"]),
+            "question": state["question"], "context": context}
+
+
 def make_reasoner(config: TopicConfig):
     async def reason(state: AgentState) -> dict[str, Any]:
         chunks = state["graded_chunks"]
         log.info("reason: building answer from %d graded chunks", len(chunks))
         for i, chunk in enumerate(chunks):
             log.info("reason: chunk [%d] score=%.4f source=%s | %.80r", i + 1, chunk.score, chunk.metadata.get("source", "?"), chunk.content)
-        context = "\n\n---\n\n".join(f"[{i + 1}] {chunk.content}" for i, chunk in enumerate(chunks))
-        answer = await invoke_chain(
-            _prompt,
-            max_tokens=1024,
-            system_prompt=config.system_prompt,
-            history=_history_messages(state["history"]),
-            question=state["question"],
-            context=context,
-        )
+        answer = await invoke_chain(ANSWER_PROMPT, max_tokens=1024, **answer_inputs(config, state))
         answer = _WIDE_MARKER.sub(r"[\1]", answer.strip())
         log.info("reason: answer (%d chars): %.120r", len(answer), answer)
         return {"answer": answer}

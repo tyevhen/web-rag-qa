@@ -116,10 +116,12 @@ class DocumentRepository:
             """
         )
 
-    async def sample_chunks(self, n: int) -> list[asyncpg.Record]:
+    async def sample_chunks(self, n: int, lang: str | None = None) -> list[asyncpg.Record]:
         return await self._pool.fetch(
-            "SELECT id::text, content, metadata FROM chunks ORDER BY random() LIMIT $1",
+            "SELECT id::text, content, metadata FROM chunks"
+            " WHERE $2::text IS NULL OR metadata->>'lang' = $2 ORDER BY random() LIMIT $1",
             n,
+            lang,
         )
 
     async def get_chunks_by_ids(self, ids: list[str]) -> list[asyncpg.Record]:

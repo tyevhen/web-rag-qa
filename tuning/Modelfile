@@ -1,0 +1,5 @@
+# The tuned generator; same parameters as llm/Modelfile. Build: tuning/README.md, step 6
+FROM /Volumes/ADATA SD700/web-rag-tuning/fused-q4_k_m.gguf
+PARAMETER num_ctx 16384
+PARAMETER temperature 0
+PARAMETER num_predict 2048
