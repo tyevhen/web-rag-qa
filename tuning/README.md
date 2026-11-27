@@ -55,6 +55,20 @@ ROOT="/Volumes/ADATA SD700/web-rag-tuning"
    downloads the 15 GB base into `~\.cache\huggingface`. Keep the PC plugged in with sleep off; if it stops,
    the same command resumes from the last `run\checkpoint-*` (one every 50 of 656 steps). Send back
    `$T\run\adapter` (~160 MB) and the last checkpoint's `trainer_state.json` (the loss curve).
+
+   **Merge and quantize on the Windows PC too** (optional): only with 32 GB of RAM or more (the merge loads the
+   whole bf16 model on the CPU) and ~40 GB free disk. It ends with the file steps 4–5 make, ready for step 6:
+   ```powershell
+   .venv-sft\Scripts\python tuning\colab_sft.py merge --out $T\run --fused $T\fused
+   winget install llama.cpp                                   # llama-quantize; open a new PowerShell after
+   git clone --depth 1 https://github.com/ggml-org/llama.cpp $T\llama.cpp
+   uv venv .venv-gguf --python 3.12
+   uv pip install --python .venv-gguf -r $T\llama.cpp\requirements\requirements-convert_hf_to_gguf.txt
+   .venv-gguf\Scripts\python $T\llama.cpp\convert_hf_to_gguf.py $T\fused --outtype bf16 --outfile $T\fused-bf16.gguf
+   llama-quantize $T\fused-bf16.gguf $T\fused-q4_k_m.gguf Q4_K_M
+   ```
+   Send back `$T\fused-q4_k_m.gguf` (~4.7 GB) by a share link (Google Drive, OneDrive) or a private Hugging Face
+   repo (`hf upload`); git and free WeTransfer won't take it. It goes to `$ROOT/fused-q4_k_m.gguf`, then step 6.
 4. Merge the adapter two ways, to compare them. Both outputs are unquantized (~15 GB each), as the GGUF converter needs:
    - `fused`: into the full-precision base, so the final quantization starts from clean weights;
    - `fused4`: into the 4-bit base it was trained on, so the weights are rounded to 4 bits twice.

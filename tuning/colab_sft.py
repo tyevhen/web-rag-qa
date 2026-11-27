@@ -1,7 +1,7 @@
 """QLoRA of Qwen2.5-7B-Instruct on a CUDA GPU (Colab, Windows), the twin of tuning/lora.yaml (tuning/README.md, step 3).
 
     python colab_sft.py train --data DATA --out OUT   # resumes from the last OUT/checkpoint-* if any
-    python colab_sft.py merge --out OUT               # OUT/adapter + full-precision base -> /content/fused
+    python colab_sft.py merge --out OUT [--fused DIR] # OUT/adapter + full-precision base -> DIR (/content/fused)
 
 Same settings as lora.yaml (rank 16, scale 2 = alpha 32, dropout 0.05, constant lr 5e-5, effective
 batch 4, 2 epochs, loss on the answer only), except every layer is trained: the 8 there was a 16 GB limit.
@@ -49,8 +49,8 @@ def train(data: Path, out: Path) -> None:
     trainer.save_model(str(out / "adapter"))
 
 
-def merge(out: Path, fused_dir: Path = Path("/content/fused")) -> None:
-    """Into the runtime's disk, not Drive: the merged model is ~15 GB, all of a free Drive."""
+def merge(out: Path, fused_dir: Path) -> None:
+    """Loads the whole bf16 model on the CPU: needs ~32 GB of RAM. Output ~15 GB (on Colab: the runtime's disk, not Drive)."""
     base = AutoModelForCausalLM.from_pretrained(BASE, dtype=torch.bfloat16, device_map="cpu")
     fused = PeftModel.from_pretrained(base, str(out / "adapter")).merge_and_unload()
     fused.save_pretrained(str(fused_dir))
@@ -62,5 +62,6 @@ if __name__ == "__main__":
     parser.add_argument("step", choices=["train", "merge"])
     parser.add_argument("--data", type=Path)
     parser.add_argument("--out", type=Path, required=True)
+    parser.add_argument("--fused", type=Path, default=Path("/content/fused"))
     a = parser.parse_args()
-    train(a.data, a.out) if a.step == "train" else merge(a.out)
+    train(a.data, a.out) if a.step == "train" else merge(a.out, a.fused)
