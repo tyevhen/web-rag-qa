@@ -82,3 +82,12 @@ if ($LASTEXITCODE -ne 0) { throw "quantize failed; kept $bf16" }
 Remove-Item $bf16
 ```
 Send `$T\fused-q4_k_m.gguf` by a Google Drive or OneDrive link (git and free WeTransfer won't take it). On the Mac: `ollama create web-rag-llm-ft -f tuning/Modelfile` after that file is at the `FROM` path in `tuning/Modelfile`.
+
+**7. Validation loss, if the training log is gone** (optional; ~10 min, plus the 15 GB base download if 6b removed it)
+```powershell
+cd $HOME\Projects\web-rag-qa; $T = "$HOME\web-rag-tuning"
+.venv-sft\Scripts\python tuning\colab_sft.py eval --data tuning\data-4k --out (Join-Path $T 'run')
+```
+Needs only `run\adapter`. Prints two lines, `base:` (the model without the adapter) and `tuned:`, each with
+`eval_loss` and token accuracy on `valid.jsonl`; send a screenshot. The tuned loss should be well below the base's.
+Delete `$HOME\.cache\huggingface` afterwards to get the disk back.
