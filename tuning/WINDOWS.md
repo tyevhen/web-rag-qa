@@ -42,18 +42,43 @@ A loss around 1.0 that slowly falls is good; `nan` or `CUDA out of memory`: stop
 Compress-Archive $T\run\adapter $HOME\Desktop\adapter.zip
 ```
 
-**6b. 32 GB of RAM or more: merge, convert, send the GGUF** (~4.7 GB)
+**6b. 32 GB of RAM or more: merge, convert, quantize to 4-bit, send the GGUF** (~4.7 GB)
+
+The file for the 16 GB Mac is `$T\fused-q4_k_m.gguf`: `Q4_K_M`, the same 4-bit level Ollama already uses (`llm/Modelfile`, ~4.7 GB). The bf16 GGUF is only the full-precision input to `llama-quantize`. Convert and quantize with one llama.cpp build — `winget list --id ggml.llamacpp` shows the installed tag; the converter checkout has to be that tag (`conversion/qwen.py` and the GGUF loader move between builds). This disk has about 17 GB free, so each intermediate is removed once the next file exists. Checkpoints only resume training; `run\adapter` stays.
+
 ```powershell
-.venv-sft\Scripts\python tuning\colab_sft.py merge --out $T\run --fused $T\fused
-winget install llama.cpp
+cd $HOME\Projects\web-rag-qa
+$T = "$HOME\web-rag-tuning"
+$run = Join-Path $T 'run'
+$fused = Join-Path $T 'fused'
+Remove-Item -Recurse -Force (Join-Path $run 'checkpoint-*')
+.venv-sft\Scripts\python tuning\colab_sft.py merge --out $run --fused $fused
+if ($LASTEXITCODE -ne 0) { throw "merge failed" }
+Remove-Item -Recurse -Force $HOME\.cache\huggingface\hub\models--Qwen--Qwen2.5-7B-Instruct
+winget upgrade --id ggml.llamacpp -e --accept-package-agreements --accept-source-agreements
 ```
-Open a new PowerShell, then:
+Open a new PowerShell (so the upgraded `llama-quantize` is on `PATH`), then:
 ```powershell
-cd $HOME\web-rag-qa; $T = "$HOME\web-rag-tuning"
-git clone --depth 1 https://github.com/ggml-org/llama.cpp $T\llama.cpp
-uv venv .venv-gguf --python 3.12
-uv pip install --python .venv-gguf -r $T\llama.cpp\requirements\requirements-convert_hf_to_gguf.txt
-.venv-gguf\Scripts\python $T\llama.cpp\convert_hf_to_gguf.py $T\fused --outtype bf16 --outfile $T\fused-bf16.gguf
-llama-quantize $T\fused-bf16.gguf $T\fused-q4_k_m.gguf Q4_K_M
+cd $HOME\Projects\web-rag-qa
+$T = "$HOME\web-rag-tuning"
+$fused = Join-Path $T 'fused'
+$convert = Join-Path $T 'llama.cpp\convert_hf_to_gguf.py'
+$bf16 = Join-Path $T 'fused-bf16.gguf'
+$q4 = Join-Path $T 'fused-q4_k_m.gguf'
+$ver = ((winget list --id ggml.llamacpp --disable-interactivity | Select-String -Pattern '\bb\d+\b').Matches.Value | Select-Object -First 1)
+if (-not (Test-Path (Join-Path $T 'llama.cpp\.git'))) {
+  git clone --depth 1 --branch $ver https://github.com/ggml-org/llama.cpp (Join-Path $T 'llama.cpp')
+} else {
+  git -C (Join-Path $T 'llama.cpp') fetch --depth 1 origin "refs/tags/${ver}:refs/tags/${ver}"
+  git -C (Join-Path $T 'llama.cpp') checkout $ver
+}
+if (-not (Test-Path .venv-gguf\Scripts\python.exe)) { uv venv .venv-gguf --python 3.12 }
+uv pip install --python .venv-gguf -r (Join-Path $T 'llama.cpp\requirements\requirements-convert_hf_to_gguf.txt')
+.venv-gguf\Scripts\python $convert $fused --outtype bf16 --outfile $bf16
+if ($LASTEXITCODE -ne 0) { throw "convert failed" }
+Remove-Item -Recurse -Force $fused
+llama-quantize $bf16 $q4 Q4_K_M
+if ($LASTEXITCODE -ne 0) { throw "quantize failed; kept $bf16" }
+Remove-Item $bf16
 ```
-Send `$T\fused-q4_k_m.gguf` by a Google Drive or OneDrive link (git and free WeTransfer won't take it).
+Send `$T\fused-q4_k_m.gguf` by a Google Drive or OneDrive link (git and free WeTransfer won't take it). On the Mac: `ollama create web-rag-llm-ft -f tuning/Modelfile` after that file is at the `FROM` path in `tuning/Modelfile`.
